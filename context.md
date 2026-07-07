@@ -115,3 +115,21 @@ kimi-k2p7-code
 gemma-4-31b-it
 gemma-4-26b-a4b-it
 gemma-4-31b-it-nvfp4
+
+General rules (all tracks)
+- Your container must start and be ready within 60 seconds
+- Response time per request must be under 30 seconds
+- All responses must be in English
+- Do not hardcode or cache answers to specific inputs — evaluation uses unseen variants
+- Container images must be publicly pullable at submission time
+
+Image architecture requirement
+The judging VM runs linux/amd64. Your image must include a linux/amd64 manifest or it
+will fail to pull and score zero.
+
+If you build on Apple Silicon (M1/M2/M3), add --platform linux/amd64 to your build
+command:
+docker buildx build --platform linux/amd64 --tag your-image:latest --push .
+
+Standard linux/amd64 builds (e.g. built on Intel/AMD or GitHub Actions) are fine without any
+changes.
