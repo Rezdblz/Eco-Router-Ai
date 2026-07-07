@@ -1,78 +1,74 @@
-"""Minimal runner for the Eco-Router-Ai evaluation harness.
+"""Integrated runner using project's settings, IO and router modules.
 
-This script implements the minimum required behavior for local testing:
-- reads `/input/tasks.json` (list of tasks with `task_id` and `prompt`)
-- classifies each task
-- selects a model from `ALLOWED_MODELS`
-- writes `/output/results.json` with classification and chosen model
+Behavior:
+- Load settings from environment via `app.core.config.load_settings()`
+- Read tasks via `app.io.reader.load_tasks()`
+- For each task: classify, select model, call Fireworks via client
+- Write results via `app.io.writer.write_results()`
 
-The script intentionally does not call Fireworks for inference; it only
-demonstrates the classification and selection capability to keep tests
-fast and deterministic.
+This runner is suitable for local testing and for the evaluation harness.
 """
 from __future__ import annotations
 
-import json
-import os
-from pathlib import Path
-from typing import List, Dict
+import logging
+import sys
+from typing import List
 
+from app.core.config import load_settings
+from app.io.reader import load_tasks
+from app.io.writer import write_results
 from app.router.classifier import classify_task
 from app.router.model_selector import select_model
 from app.clients.fireworks_client import call_chat_model, extract_message_text
+from app.models.result import Result
 
 
-INPUT_PATH = Path("/input/tasks.json")
-OUTPUT_PATH = Path("/output/results.json")
-
-
-def load_tasks(path: Path) -> List[Dict]:
-	if not path.exists():
-		return []
-	with path.open("r", encoding="utf-8") as f:
-		return json.load(f)
-
-
-def write_results(path: Path, results: List[Dict]) -> None:
-	path.parent.mkdir(parents=True, exist_ok=True)
-	with path.open("w", encoding="utf-8") as f:
-		json.dump(results, f, ensure_ascii=False, indent=2)
+logger = logging.getLogger("eco_router")
 
 
 def run() -> int:
-	tasks = load_tasks(INPUT_PATH)
-	if not tasks:
-		print("No tasks found at /input/tasks.json")
-		return 1
+	try:
+		settings = load_settings()
+	except Exception as e:
+		logger.exception("Failed to load settings: %s", e)
+		return 2
 
-	allowed_env = os.environ.get("ALLOWED_MODELS")
-	allowed_list = [m.strip() for m in allowed_env.split(",")] if allowed_env else []
+	logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 
-	results = []
-	for t in tasks:
-		classified = classify_task(t)
-		chosen, rationale = select_model(classified.get("classification", {}), allowed_list)
-		answer = None
+	try:
+		tasks = load_tasks(settings.input_path)
+	except Exception as e:
+		logger.exception("Failed to load tasks: %s", e)
+		return 3
+
+	results: List[Result] = []
+
+	for task in tasks:
+		classified = classify_task(task.model_dump())
+		chosen, rationale = select_model(classified.get("classification", {}), settings.allowed_models)
+
+		answer_text = ""
 		if chosen:
-			prompt = t.get("prompt") or ""
-			# call fireworks proxy; call_chat_model reads env if needed
-			resp = call_chat_model(prompt, chosen)
+			resp = call_chat_model(task.prompt, chosen, base_url=settings.fireworks_base_url, api_key=settings.fireworks_api_key, timeout=settings.request_timeout)
 			if resp:
 				text = extract_message_text(resp)
-				answer = text
+				answer_text = text or ""
+			else:
+				logger.warning("Model call returned no response for task %s using model %s", task.task_id, chosen)
+		else:
+			logger.warning("No model chosen for task %s (classification=%s)", task.task_id, classified.get("classification"))
 
-		results.append({
-			"task_id": t.get("task_id"),
-			"classification": classified.get("classification"),
-			"chosen_model": chosen,
-			"rationale": rationale,
-			"answer": answer,
-		})
+		results.append(Result(task_id=task.task_id, answer=answer_text))
 
-	write_results(OUTPUT_PATH, results)
-	print(f"Wrote {len(results)} results to {OUTPUT_PATH}")
+	try:
+		write_results(results, settings.output_path)
+	except Exception as e:
+		logger.exception("Failed to write results: %s", e)
+		return 4
+
+	logger.info("Completed processing %d tasks", len(results))
 	return 0
 
 
 if __name__ == "__main__":
-	raise SystemExit(run())
+	sys.exit(run())

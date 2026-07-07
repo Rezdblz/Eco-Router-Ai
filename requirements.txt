@@ -4,3 +4,4 @@ python-dotenv
 orjson
 pydantic
 pytest
+torch
