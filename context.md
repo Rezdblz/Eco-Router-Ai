@@ -108,3 +108,10 @@ Scoring
 Submissions below the accuracy threshold are excluded from the leaderboard.
 2. Token efficiency: submissions that pass the accuracy gate are ranked ascending by
 total tokens recorded by the judging proxy. Fewer tokens = higher rank.
+
+Allowed models (Track 1):
+minimax-m3
+kimi-k2p7-code
+gemma-4-31b-it
+gemma-4-26b-a4b-it
+gemma-4-31b-it-nvfp4
