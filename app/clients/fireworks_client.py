@@ -8,9 +8,28 @@ fall back to a non-network classifier.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Optional, Dict, Any
 
 import httpx
+
+
+# Attempt to load a local .env for development if python-dotenv is available.
+def _load_dotenv_if_present():
+    try:
+        from dotenv import load_dotenv
+    except Exception:
+        return
+
+    # common locations: project root and current working directory
+    candidates = [Path(__file__).resolve().parents[3] / ".env", Path.cwd() / ".env"]
+    for p in candidates:
+        if p.exists():
+            load_dotenv(p)
+            break
+
+
+_load_dotenv_if_present()
 
 
 def call_chat_model(prompt: str, model: str, base_url: Optional[str] = None, api_key: Optional[str] = None, timeout: int = 10) -> Optional[Dict[str, Any]]:

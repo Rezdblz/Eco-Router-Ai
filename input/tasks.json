@@ -1,0 +1,14 @@
+[
+  {
+    "task_id": "t1",
+    "prompt": "Summarise the following text in one sentence: The quick brown fox jumps over the lazy dog."
+  },
+  {
+    "task_id": "t2",
+    "prompt": "Write a Python function that reverses a string. Include type hints."
+  },
+  {
+    "task_id": "t3",
+    "prompt": "Calculate the percentage increase from 50 to 75 and show the steps."
+  }
+]
