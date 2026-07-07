@@ -25,6 +25,7 @@ from typing import Dict, Optional
 import os
 
 from app.clients.fireworks_client import call_chat_model, extract_message_text
+from app.router.model_selector import MODEL_PROFILES
 
 _PATTERNS = [
     (re.compile(r"\b(summariz|summary|summarise|summarize)\b", re.I), "text_summarisation", 0.9),
@@ -72,8 +73,21 @@ def classify(prompt: str) -> Dict[str, object]:
         return {"category": best_cat, "confidence": round(confidence, 2)}
 
     # fallback heuristics: look for question words or code markers
-    # try lightweight model-based classification if configured
+    # determine classifier model: prefer explicit CLASSIFIER_MODEL, otherwise
+    # choose the lightest model from ALLOWED_MODELS (if provided)
     model_name = os.environ.get("CLASSIFIER_MODEL")
+    if not model_name:
+        allowed = os.environ.get("ALLOWED_MODELS")
+        if allowed:
+            allowed_list = [m.strip() for m in allowed.split(",") if m.strip()]
+            # prefer models with known profiles, pick smallest size_rank
+            candidates = [m for m in allowed_list if m in MODEL_PROFILES]
+            if candidates:
+                model_name = min(candidates, key=lambda m: MODEL_PROFILES[m].get("size_rank", 999))
+            else:
+                # fall back to first allowed model if profiles unknown
+                model_name = allowed_list[0] if allowed_list else None
+
     if model_name:
         # craft a small instruction asking for JSON output
         instruct = (
