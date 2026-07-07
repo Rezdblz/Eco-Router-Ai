@@ -1,0 +1,10 @@
+version: "3.8"
+services:
+  eco-router:
+    image: eco-router-ai:dev
+    build: .
+    env_file: .env
+    volumes:
+      - ./input:/input
+      - ./output:/output
+    restart: "no"
