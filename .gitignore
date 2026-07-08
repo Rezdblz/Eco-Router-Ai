@@ -1,5 +1,9 @@
 .env
 
+#result / analytics
+analytics.json
+result.json
+tasks.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

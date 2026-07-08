@@ -5,3 +5,4 @@ orjson
 pydantic
 pytest
 torch
+pandas

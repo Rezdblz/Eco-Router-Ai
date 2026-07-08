@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 from typing import Optional, Dict, Any
 
 import httpx
@@ -32,6 +33,19 @@ def _load_dotenv_if_present():
 _load_dotenv_if_present()
 
 
+def _build_chat_completions_url(base_url: str) -> str:
+    """Build the Fireworks chat-completions URL without duplicating `/v1`."""
+    parsed = urlsplit(base_url.rstrip("/"))
+    path = parsed.path
+
+    if path.endswith("/v1"):
+        chat_path = path + "/chat/completions"
+    else:
+        chat_path = path + "/v1/chat/completions"
+
+    return urlunsplit((parsed.scheme, parsed.netloc, chat_path, parsed.query, parsed.fragment))
+
+
 def call_chat_model(prompt: str, model: str, base_url: Optional[str] = None, api_key: Optional[str] = None, timeout: int = 10) -> Optional[Dict[str, Any]]:
     """Call a chat-style endpoint at the Fireworks proxy and return parsed JSON.
 
@@ -45,7 +59,7 @@ def call_chat_model(prompt: str, model: str, base_url: Optional[str] = None, api
     if not base or not key:
         return None
 
-    url = base.rstrip("/") + "/v1/chat/completions"
+    url = _build_chat_completions_url(base)
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     data = {
         "model": model,
@@ -55,12 +69,19 @@ def call_chat_model(prompt: str, model: str, base_url: Optional[str] = None, api
     }
 
     try:
+        print(url)
         with httpx.Client(timeout=timeout) as client:
             resp = client.post(url, json=data, headers=headers)
             resp.raise_for_status()
             return resp.json()
-    except Exception:
-        return None
+        print(data)
+    except Exception as e:
+        print(e)
+        raise
+    
+    except Exception as e:
+        print(e)
+        raise
 
 
 def extract_message_text(response: Dict[str, Any]) -> Optional[str]:
