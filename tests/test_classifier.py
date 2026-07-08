@@ -1,3 +1,4 @@
+from app.clients.fireworks_client import extract_message_text
 from app.router.classifier import classify, classify_task
 
 
@@ -16,3 +17,18 @@ def test_classify_task_augments():
     t = {"task_id": "t1", "prompt": "Calculate 2+2"}
     out = classify_task(t)
     assert "classification" in out
+
+
+def test_extract_message_text_prefers_answer_field():
+    response = {
+        "choices": [
+            {
+                "message": {
+                    "answer": "Neutral",
+                    "content": "This should not be used"
+                }
+            }
+        ]
+    }
+
+    assert extract_message_text(response) == "Neutral"

@@ -40,3 +40,15 @@ def write_analytics(analytics: dict, output_path: str) -> None:
     _write_json_overwrite(analytics, output_path)
 
     logger.info("Wrote analytics to %s", output_path)
+
+
+def write_analytics_history(analytics: dict, history_dir: str) -> Path:
+    path = Path(history_dir)
+    path.mkdir(parents=True, exist_ok=True)
+
+    run_id = analytics.get("summary", {}).get("run_id") or "unknown"
+    history_path = path / f"run_{run_id}.json"
+    _write_json_overwrite(analytics, str(history_path))
+
+    logger.info("Wrote analytics history to %s", history_path)
+    return history_path

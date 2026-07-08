@@ -17,6 +17,7 @@ class Settings(BaseModel):
     input_path: str = "/input/tasks.json"
     output_path: str = "/output/results.json"
     analytics_output_path: str = "/output/analytics.json"
+    analytics_history_dir: str = "/output/analytics_logs"
 
     log_level: str = "INFO"
     default_temperature: float = 0.0
@@ -71,6 +72,7 @@ def load_settings() -> Settings:
         input_path=os.getenv("INPUT_PATH", "./input/tasks.json"),
         output_path=os.getenv("OUTPUT_PATH", "./output/results.json"),
         analytics_output_path=os.getenv("ANALYTICS_PATH", "./output/analytics.json"),
+        analytics_history_dir=os.getenv("ANALYTICS_HISTORY_DIR", "./output/analytics_logs"),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         default_temperature=_parse_numeric("DEFAULT_TEMPERATURE", float, "0.0"),
         max_retries=_parse_numeric("MAX_RETRIES", int, "3"),

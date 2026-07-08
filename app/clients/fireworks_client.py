@@ -7,31 +7,57 @@ fall back to a non-network classifier.
 """
 from __future__ import annotations
 
-import os
 import json
+import os
 from pathlib import Path
+from typing import Any, Dict, Optional
 from urllib.parse import urlsplit, urlunsplit
-from typing import Optional, Dict, Any
 
 import httpx
 
 
-# Attempt to load a local .env for development if python-dotenv is available.
-def _load_dotenv_if_present():
+def _load_dotenv_if_present() -> None:
     try:
         from dotenv import load_dotenv
     except Exception:
         return
 
-    # common locations: project root and current working directory
     candidates = [Path(__file__).resolve().parents[3] / ".env", Path.cwd() / ".env"]
-    for p in candidates:
-        if p.exists():
-            load_dotenv(p)
+    for candidate in candidates:
+        if candidate.exists():
+            load_dotenv(candidate)
             break
 
 
 _load_dotenv_if_present()
+
+
+def _first_string_value(payload: object, preferred_keys: tuple[str, ...]) -> Optional[str]:
+    if isinstance(payload, str):
+        stripped = payload.strip()
+        return stripped or None
+
+    if isinstance(payload, list):
+        parts: list[str] = []
+        for item in payload:
+            extracted = _first_string_value(item, preferred_keys)
+            if extracted:
+                parts.append(extracted)
+        return "".join(parts) if parts else None
+
+    if isinstance(payload, dict):
+        for key in preferred_keys:
+            value = payload.get(key)
+            if isinstance(value, str):
+                stripped = value.strip()
+                if stripped:
+                    return stripped
+            if isinstance(value, (dict, list)):
+                nested = _first_string_value(value, preferred_keys)
+                if nested:
+                    return nested
+
+    return None
 
 
 def _build_chat_completions_url(base_url: str) -> str:
@@ -47,7 +73,7 @@ def _build_chat_completions_url(base_url: str) -> str:
     return urlunsplit((parsed.scheme, parsed.netloc, chat_path, parsed.query, parsed.fragment))
 
 
-def call_chat_model(prompt: str, model: str, base_url: Optional[str] = None, api_key: Optional[str] = None, timeout: int = 10) -> Optional[Dict[str, Any]]:
+def call_chat_model(prompt: str, model: str, base_url: Optional[str] = None, api_key: Optional[str] = None, timeout: int = 10, max_tokens: int = 256) -> Optional[Dict[str, Any]]:
     """Call a chat-style endpoint at the Fireworks proxy and return parsed JSON.
 
     Returns the provider response as a dict on success, or None on failure.
@@ -66,7 +92,7 @@ def call_chat_model(prompt: str, model: str, base_url: Optional[str] = None, api
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.0,
-        "max_tokens": 256,
+        "max_tokens": max_tokens,
     }
 
     try:
@@ -74,108 +100,55 @@ def call_chat_model(prompt: str, model: str, base_url: Optional[str] = None, api
             resp = client.post(url, json=data, headers=headers)
             resp.raise_for_status()
             return resp.json()
-    except Exception as e:
+    except Exception:
         return None
 
 
 def extract_message_text(response: Dict[str, Any]) -> Optional[str]:
     """Extract assistant text from common chat-completion shapes.
 
-    Supports OpenAI-like responses (choices[].message.content) and some
-    provider variants. Returns the first assistant text found or None.
+    Prefers answer-style fields, then common text fields, and finally
+    stringifies the payload if no plain text is present.
     """
     if not response:
         return None
 
     if isinstance(response, str):
-        return response.strip() or None
+        stripped = response.strip()
+        return stripped or None
 
-    if isinstance(response.get("content"), str):
-        return response.get("content")
+    preferred_fields = ("answer", "text", "content", "message", "output", "result", "label", "sentiment")
 
-    if isinstance(response.get("text"), str):
-        return response.get("text")
+    direct = _first_string_value(response, preferred_fields)
+    if direct:
+        return direct
 
-    message = response.get("message")
-    if isinstance(message, str):
-        return message
-    if isinstance(message, dict):
-        content = message.get("content")
-        if isinstance(content, str):
-            return content
-        if isinstance(content, list):
-            parts: list[str] = []
-            for part in content:
-                if isinstance(part, str):
-                    parts.append(part)
-                elif isinstance(part, dict):
-                    text = part.get("text") or part.get("content")
-                    if isinstance(text, str):
-                        parts.append(text)
-            if parts:
-                return "".join(parts)
-
-    # OpenAI-like
     choices = response.get("choices") or []
     if choices:
         first = choices[0]
         msg = first.get("message") or {}
-        content = msg.get("content")
-        if isinstance(content, str) and content:
-            return content
-        if isinstance(content, list):
-            parts: list[str] = []
-            for part in content:
-                if isinstance(part, str):
-                    parts.append(part)
-                elif isinstance(part, dict):
-                    text = part.get("text") or part.get("content")
-                    if isinstance(text, str):
-                        parts.append(text)
-            if parts:
-                return "".join(parts)
+        msg_text = _first_string_value(msg, preferred_fields)
+        if msg_text:
+            return msg_text
 
         delta = first.get("delta") or {}
-        delta_content = delta.get("content")
-        if isinstance(delta_content, str) and delta_content:
-            return delta_content
+        delta_text = _first_string_value(delta, preferred_fields)
+        if delta_text:
+            return delta_text
 
-        choice_content = first.get("content")
-        if isinstance(choice_content, str) and choice_content:
-            return choice_content
-        # older completion-style
-        text = first.get("text")
-        if isinstance(text, str) and text:
-            return text
+        choice_text = _first_string_value(first, preferred_fields)
+        if choice_text:
+            return choice_text
 
-    # fallback: top-level `output` or `result` fields
-    output = response.get("output")
-    if isinstance(output, str):
-        return output
-    if isinstance(output, list):
-        parts: list[str] = []
-        for part in output:
-            if isinstance(part, str):
-                parts.append(part)
-            elif isinstance(part, dict):
-                text = part.get("text") or part.get("content")
-                if isinstance(text, str):
-                    parts.append(text)
-        if parts:
-            return "".join(parts)
+    output_text = _first_string_value(response.get("output"), preferred_fields)
+    if output_text:
+        return output_text
 
-    result = response.get("result")
-    if isinstance(result, str):
-        return result
-    if isinstance(result, dict):
-        for key in ("content", "text", "message"):
-            value = result.get(key)
-            if isinstance(value, str):
-                return value
+    result_text = _first_string_value(response.get("result"), preferred_fields)
+    if result_text:
+        return result_text
 
     try:
         return json.dumps(response, ensure_ascii=False, separators=(",", ":"))
     except Exception:
         return str(response)
-
-    return None

@@ -4,6 +4,7 @@
 analytics.json
 results.json
 tasks.json
+output/analytics_logs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
