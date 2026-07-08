@@ -5,6 +5,8 @@ analytics.json
 results.json
 tasks.json
 output/analytics_logs/
+truth.json
+evaluation.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

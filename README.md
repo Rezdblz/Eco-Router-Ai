@@ -177,6 +177,11 @@ The following environment variables must be provided at runtime. **Do not hardco
 | `FIREWORKS_BASE_URL` | Base URL for all Fireworks API calls      | `https://api.fireworks.ai/inference/v1` |
 | `ALLOWED_MODELS`     | Comma-separated list of allowed model IDs | `model1,model2,model3`                  |
 
+## Router Capability Metadata
+
+Router model capabilities are stored in [app/router/model_capabilities.json](app/router/model_capabilities.json).
+Update that file if you want to refine which model is described as better for a given task type.
+
 ## Tech Stack
 
 | Layer             | Technology                       |

@@ -1,10 +1,12 @@
 import os
 from pydantic import BaseModel, field_validator
 
+# Load .env FIRST before any other imports that might use environment variables
 try:
     from dotenv import load_dotenv
-    if os.getenv("ENVIRONMENT", "production") == "development":
-        load_dotenv()
+    # Load .env immediately - this populates os.environ with values from .env
+    # The load_dotenv will read the ENVIRONMENT variable if it exists in .env
+    load_dotenv(override=True)  # override=True ensures .env values take precedence
 except ImportError:
     pass
 

@@ -11,42 +11,33 @@ from typing import Any
 CATEGORY_PROMPTS: dict[str, dict[str, Any]] = {
 	"factual_knowledge": {
 		"instruction": "Answer briefly and clearly in plain English.",
-		"max_tokens": 120,
 	},
 	"mathematical_reasoning": {
 		"instruction": "Show only the necessary steps and the final answer.",
-		"max_tokens": 180,
 	},
 	"sentiment_classification": {
-		"instruction": "Return only one label: Positive, Negative, or Neutral.",
-		"max_tokens": 32,
+		"instruction": "Determine the sentiment and answer according to the task. Be concise and avoid unnecessary explanation.",
 	},
 	"text_summarisation": {
 		"instruction": "Summarise the passage in one sentence.",
-		"max_tokens": 120,
 	},
 	"named_entity_recognition": {
 		"instruction": "Extract people, organizations, and locations as a compact list.",
-		"max_tokens": 96,
 	},
 	"code_debugging": {
 		"instruction": "Identify the bug and provide a corrected version with a brief explanation.",
-		"max_tokens": 220,
 	},
 	"logical_deductive_reasoning": {
 		"instruction": "Solve the puzzle with concise reasoning and the final answer.",
-		"max_tokens": 180,
 	},
 	"code_generation": {
 		"instruction": "Write the function or code solution directly with minimal explanation.",
-		"max_tokens": 240,
 	},
 }
 
 
 DEFAULT_PROMPT_CONFIG: dict[str, Any] = {
-	"instruction": "Answer the task directly in English with the smallest useful output.",
-	"max_tokens": 160,
+	"instruction": "Answer the task directly in English with the smallest useful and accurate output.",
 }
 
 
