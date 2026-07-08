@@ -16,7 +16,11 @@ CATEGORY_PROMPTS: dict[str, dict[str, Any]] = {
 		"instruction": "Show only the necessary steps and the final answer.",
 	},
 	"sentiment_classification": {
-		"instruction": "Determine the sentiment and answer according to the task. Be concise and avoid unnecessary explanation.",
+		"instruction": (
+        "Analyze the sentiment of the text. "
+        "Choose the most appropriate sentiment label based on the content and explain your choice briefly if requested. "
+        "Keep the response concise."
+    ),
 	},
 	"text_summarisation": {
 		"instruction": "Summarise the passage in one sentence.",

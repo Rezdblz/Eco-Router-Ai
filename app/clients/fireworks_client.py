@@ -103,52 +103,37 @@ def call_chat_model(prompt: str, model: str, base_url: Optional[str] = None, api
     except Exception:
         return None
 
-
 def extract_message_text(response: Dict[str, Any]) -> Optional[str]:
-    """Extract assistant text from common chat-completion shapes.
-
-    Prefers answer-style fields, then common text fields, and finally
-    stringifies the payload if no plain text is present.
     """
+    Extract the assistant's final answer from a Fireworks/OpenAI chat response.
+    """
+
     if not response:
         return None
 
     if isinstance(response, str):
-        stripped = response.strip()
-        return stripped or None
+        return response.strip() or None
 
-    preferred_fields = ("answer", "text", "content", "message", "output", "result", "label", "sentiment")
+    choices = response.get("choices")
+    if not choices:
+        return None
 
-    direct = _first_string_value(response, preferred_fields)
-    if direct:
-        return direct
+    message = choices[0].get("message", {})
 
-    choices = response.get("choices") or []
-    if choices:
-        first = choices[0]
-        msg = first.get("message") or {}
-        msg_text = _first_string_value(msg, preferred_fields)
-        if msg_text:
-            return msg_text
+    # Preferred: assistant content
+    content = message.get("content")
+    if isinstance(content, str) and content.strip():
+        return content.strip()
 
-        delta = first.get("delta") or {}
-        delta_text = _first_string_value(delta, preferred_fields)
-        if delta_text:
-            return delta_text
+    # Some reasoning models only expose reasoning_content
+    reasoning = message.get("reasoning_content")
+    if isinstance(reasoning, str) and reasoning.strip():
+        return reasoning.strip()
 
-        choice_text = _first_string_value(first, preferred_fields)
-        if choice_text:
-            return choice_text
+    # Streaming responses
+    delta = choices[0].get("delta", {})
+    delta_content = delta.get("content")
+    if isinstance(delta_content, str) and delta_content.strip():
+        return delta_content.strip()
 
-    output_text = _first_string_value(response.get("output"), preferred_fields)
-    if output_text:
-        return output_text
-
-    result_text = _first_string_value(response.get("result"), preferred_fields)
-    if result_text:
-        return result_text
-
-    try:
-        return json.dumps(response, ensure_ascii=False, separators=(",", ":"))
-    except Exception:
-        return str(response)
+    return None

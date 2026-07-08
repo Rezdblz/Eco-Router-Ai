@@ -140,42 +140,87 @@ if __name__ == "__main__":
         print(f"{ex['category']:30s} (conf={ex['confidence']:.2f}) => {model}")
         print(f"  Reason: {rationale['reason']}")
 
+import math
+
+
 def allocate_tokens(
     model_id: str,
     category: str | None,
     prompt: str,
 ) -> int:
-    """Allocate max_tokens based on model, task category, and prompt size."""
+    """
+    Dynamically allocate completion tokens based on:
+    - task category
+    - prompt length
+    - model capability
 
-    # Base allocation by model capability
-    caps = _get_model_capabilities(model_id)
+    The goal is to minimize token usage while avoiding truncation.
+    """
 
-    if "large_general_purpose" in caps:
-        base = 300
-        limit = 1024
-    elif "code_specialist" in caps:
-        base = 400
-        limit = 1500
-    elif "fast_efficient" in caps:
-        base = 150
-        limit = 512
-    else:
-        base = 200
-        limit = 768
+    # Base allocation per task category
+    base = {
+        "sentiment_classification": 24,
+        "named_entity_recognition": 48,
+        "text_summarisation": 72,
+        "mathematical_reasoning": 96,
+        "factual_knowledge": 128,
+        "logical_deductive_reasoning": 192,
+        "code_generation": 320,
+        "code_debugging": 384,
+    }.get(category, 128)
 
-    # Category bonus
-    category_bonus = {
-        "code_generation": 250,
-        "code_debugging": 200,
-        "logical_deductive_reasoning": 100,
-        "mathematical_reasoning": 75,
-        "factual_knowledge": 50,
-        "text_summarisation": 25,
-        "named_entity_recognition": 0,
-        "sentiment_classification": 0,
-    }.get(category, 50)
+    # Prompt complexity
+    words = len(prompt.split())
 
-    # Prompt length bonus
-    prompt_bonus = min(len(prompt.split()) * 2, 250)
+    if words > 500:
+        base += 192
+    elif words > 300:
+        base += 128
+    elif words > 150:
+        base += 64
+    elif words > 75:
+        base += 32
 
-    return min(base + category_bonus + prompt_bonus, limit)
+    # Detect code
+    if "```" in prompt:
+        base += 128
+
+    # Detect tables
+    if "|" in prompt:
+        base += 48
+
+    # Detect long numbered lists
+    if prompt.count("\n") > 20:
+        base += 64
+
+    # Detect reasoning keywords
+    reasoning_keywords = (
+        "explain",
+        "why",
+        "prove",
+        "derive",
+        "reason",
+        "compare",
+        "analyze",
+        "analyse",
+        "justify",
+    )
+
+    if any(k in prompt.lower() for k in reasoning_keywords):
+        base += 64
+
+    model = model_id.lower()
+
+    # Small fast models
+    if "minimax" in model or "m3" in model:
+        base *= 0.9
+
+    # Medium models
+    elif "gemma" in model:
+        base *= 1.1
+
+    # Large reasoning/code models
+    elif "kimi" in model:
+        base *= 1.25
+
+    return max(24, min(int(math.ceil(base)), 1024))

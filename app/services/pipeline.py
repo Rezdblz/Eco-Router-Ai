@@ -122,14 +122,55 @@ def _call_model_for_task(
         model_elapsed_seconds = perf_counter() - call_started
 
         if resp:
+            finish_reason = (
+                resp.get("choices", [{}])[0].get("finish_reason", "")
+                if isinstance(resp, dict)
+                else ""
+            )
+
+            # Retry once if truncated
+            if finish_reason == "length":
+                logger.info(
+                    "Task %s truncated. Retrying with %d tokens.",
+                    task.task_id,
+                    min(allocated_tokens * 2, 2048),
+                )
+
+                retry_started = perf_counter()
+
+                resp = call_chat_model(
+                    build_answer_prompt(task.prompt, category),
+                    model,
+                    base_url=settings.fireworks_base_url,
+                    api_key=settings.fireworks_api_key,
+                    timeout=settings.request_timeout,
+                    max_tokens=min(allocated_tokens * 2, 2048),
+                )
+
+                model_elapsed_seconds += perf_counter() - retry_started
+
             text = extract_message_text(resp)
             answer_text = text or ""
 
             resp_usage = resp.get("usage") if isinstance(resp, dict) else None
+
             if isinstance(resp_usage, dict):
-                prompt_tokens = int(resp_usage.get("prompt_tokens") or resp_usage.get("input_tokens") or 0)
-                completion_tokens = int(resp_usage.get("completion_tokens") or resp_usage.get("output_tokens") or 0)
-                total_tokens = int(resp_usage.get("total_tokens") or (prompt_tokens + completion_tokens))
+                prompt_tokens = int(
+                    resp_usage.get("prompt_tokens")
+                    or resp_usage.get("input_tokens")
+                    or 0
+                )
+
+                completion_tokens = int(
+                    resp_usage.get("completion_tokens")
+                    or resp_usage.get("output_tokens")
+                    or 0
+                )
+
+                total_tokens = int(
+                    resp_usage.get("total_tokens")
+                    or (prompt_tokens + completion_tokens)
+                )
 
                 usage = {
                     "prompt_tokens": prompt_tokens,
@@ -147,26 +188,26 @@ def _call_model_for_task(
                     model,
                 )
 
-            return (
-                answer_text,
-                usage,
-                model_elapsed_seconds,
-                actual_model,
-                allocated_tokens,
-            )
+        return (
+            answer_text,
+            usage,
+            model_elapsed_seconds,
+            actual_model,
+            allocated_tokens,
+        )
 
-        if model == chosen:
-            logger.warning(
-                "Model call returned no response for task %s using model %s",
-                task.task_id,
-                model,
-            )
-        else:
-            logger.warning(
-                "Fallback model %s also failed for task %s",
-                model,
-                task.task_id,
-            )
+    if model == chosen:
+        logger.warning(
+            "Model call returned no response for task %s using model %s",
+            task.task_id,
+            model,
+        )
+    else:
+        logger.warning(
+            "Fallback model %s also failed for task %s",
+            model,
+            task.task_id,
+        )
 
     return (
         answer_text,
@@ -178,19 +219,20 @@ def _call_model_for_task(
 
 
 def _build_analytics_row(
-    task: Any,
-    classification: dict[str, Any],
-    category: str | None,
-    router_model: str | None,
-    router_usage: dict[str, int],
-    chosen: str | None,
-    actual_model: str | None,
-    rationale: dict[str, Any],
-    prompt_instruction: str,
-    allocated_tokens: int,
-    usage: dict[str, int],
-    model_elapsed_seconds: float,
-) -> dict[str, Any]:
+    task,
+    classification,
+    category,
+    router_model,
+    router_usage,
+    chosen,
+    actual_model,
+    rationale,
+    usage,
+    model_elapsed_seconds,
+    allocated_tokens,
+):
+    completion = usage.get("completion_tokens", 0)
+
     return {
         "task_id": task.task_id,
         "category": category,
@@ -198,6 +240,7 @@ def _build_analytics_row(
         "method": classification.get("method"),
 
         "router_model": router_model,
+
         "router_prompt_tokens": int(router_usage.get("prompt_tokens", 0)),
         "router_completion_tokens": int(router_usage.get("completion_tokens", 0)),
         "router_total_tokens": int(router_usage.get("total_tokens", 0)),
@@ -205,12 +248,17 @@ def _build_analytics_row(
         "chosen_model": actual_model or chosen,
         "reason": rationale.get("reason"),
 
-        "prompt_template": prompt_instruction,
-        "allocated_max_tokens": allocated_tokens,
+        "allocated_tokens": allocated_tokens,
+
+        "prompt_tokens": usage["prompt_tokens"],
+        "completion_tokens": completion,
+        "total_tokens": usage["total_tokens"],
+
+        "completion_efficiency":
+            round(completion / allocated_tokens, 3)
+            if allocated_tokens else 0,
 
         "model_elapsed_seconds": round(model_elapsed_seconds, 4),
-
-        **usage,
     }
 
 def _process_task(task: Any, settings: Settings) -> tuple[Result, dict[str, Any]]:
@@ -271,10 +319,9 @@ def _process_task(task: Any, settings: Settings) -> tuple[Result, dict[str, Any]
         chosen,
         actual_model,
         rationale,
-        prompt_config["instruction"],
-        allocated_tokens,
         usage,
         model_elapsed_seconds,
+        allocated_tokens,
     )
 
     if not chosen:
