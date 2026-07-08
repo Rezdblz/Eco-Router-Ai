@@ -8,6 +8,7 @@ fall back to a non-network classifier.
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 from typing import Optional, Dict, Any
@@ -69,19 +70,12 @@ def call_chat_model(prompt: str, model: str, base_url: Optional[str] = None, api
     }
 
     try:
-        print(url)
         with httpx.Client(timeout=timeout) as client:
             resp = client.post(url, json=data, headers=headers)
             resp.raise_for_status()
             return resp.json()
-        print(data)
     except Exception as e:
-        print(e)
-        raise
-    
-    except Exception as e:
-        print(e)
-        raise
+        return None
 
 
 def extract_message_text(response: Dict[str, Any]) -> Optional[str]:
@@ -93,23 +87,95 @@ def extract_message_text(response: Dict[str, Any]) -> Optional[str]:
     if not response:
         return None
 
+    if isinstance(response, str):
+        return response.strip() or None
+
+    if isinstance(response.get("content"), str):
+        return response.get("content")
+
+    if isinstance(response.get("text"), str):
+        return response.get("text")
+
+    message = response.get("message")
+    if isinstance(message, str):
+        return message
+    if isinstance(message, dict):
+        content = message.get("content")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts: list[str] = []
+            for part in content:
+                if isinstance(part, str):
+                    parts.append(part)
+                elif isinstance(part, dict):
+                    text = part.get("text") or part.get("content")
+                    if isinstance(text, str):
+                        parts.append(text)
+            if parts:
+                return "".join(parts)
+
     # OpenAI-like
     choices = response.get("choices") or []
     if choices:
         first = choices[0]
         msg = first.get("message") or {}
         content = msg.get("content")
-        if content:
+        if isinstance(content, str) and content:
             return content
+        if isinstance(content, list):
+            parts: list[str] = []
+            for part in content:
+                if isinstance(part, str):
+                    parts.append(part)
+                elif isinstance(part, dict):
+                    text = part.get("text") or part.get("content")
+                    if isinstance(text, str):
+                        parts.append(text)
+            if parts:
+                return "".join(parts)
+
+        delta = first.get("delta") or {}
+        delta_content = delta.get("content")
+        if isinstance(delta_content, str) and delta_content:
+            return delta_content
+
+        choice_content = first.get("content")
+        if isinstance(choice_content, str) and choice_content:
+            return choice_content
         # older completion-style
         text = first.get("text")
-        if text:
+        if isinstance(text, str) and text:
             return text
 
     # fallback: top-level `output` or `result` fields
-    if isinstance(response.get("output"), str):
-        return response.get("output")
-    if isinstance(response.get("result"), str):
-        return response.get("result")
+    output = response.get("output")
+    if isinstance(output, str):
+        return output
+    if isinstance(output, list):
+        parts: list[str] = []
+        for part in output:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, dict):
+                text = part.get("text") or part.get("content")
+                if isinstance(text, str):
+                    parts.append(text)
+        if parts:
+            return "".join(parts)
+
+    result = response.get("result")
+    if isinstance(result, str):
+        return result
+    if isinstance(result, dict):
+        for key in ("content", "text", "message"):
+            value = result.get(key)
+            if isinstance(value, str):
+                return value
+
+    try:
+        return json.dumps(response, ensure_ascii=False, separators=(",", ":"))
+    except Exception:
+        return str(response)
 
     return None

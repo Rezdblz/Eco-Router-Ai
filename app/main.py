@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import logging
 import sys
+from datetime import datetime, timezone
+from uuid import uuid4
 from time import perf_counter
 from typing import List
 
@@ -45,6 +47,8 @@ def run() -> int:
 	results: List[Result] = []
 	analytics_rows: list[dict] = []
 	pipeline_started = perf_counter()
+	run_id = uuid4().hex
+	run_started_at = datetime.now(timezone.utc).isoformat()
 
 	for task in tasks:
 		classified = classify_task(task.model_dump())
@@ -81,6 +85,7 @@ def run() -> int:
 				"task_id": task.task_id,
 				"category": classified.get("classification", {}).get("category"),
 				"confidence": classified.get("classification", {}).get("confidence"),
+				"method": classified.get("classification", {}).get("method"),
 				"chosen_model": chosen,
 				"reason": rationale.get("reason"),
 				"model_elapsed_seconds": round(model_elapsed_seconds, 4),
@@ -93,6 +98,8 @@ def run() -> int:
 		write_analytics(
 			{
 				"summary": {
+					"run_id": run_id,
+					"generated_at": run_started_at,
 					"tasks": len(results),
 					"pipeline_elapsed_seconds": round(perf_counter() - pipeline_started, 4),
 					"prompt_tokens": sum(row["prompt_tokens"] for row in analytics_rows),

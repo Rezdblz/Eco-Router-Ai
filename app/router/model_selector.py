@@ -10,17 +10,6 @@ from __future__ import annotations
 import os
 from typing import Dict, Iterable, List, Optional, Tuple
 
-# Minimal model profiles used for ranking. In real systems this would be
-# populated from telemetry or a config; here we include a few example names.
-MODEL_PROFILES: Dict[str, Dict[str, object]] = {
-    # small / cheap models
-    "minimax-m3": {"size_rank": 1, "capabilities": ["factual_knowledge", "text_summarisation", "sentiment_classification", "named_entity_recognition"]},
-    # medium models
-    "kimi-k2p7-code": {"size_rank": 2, "capabilities": ["code_generation", "code_debugging", "factual_knowledge"]},
-    # larger / reasoning models
-    "gemma-4-31b-it": {"size_rank": 4, "capabilities": ["mathematical_reasoning", "logical_deductive_reasoning", "code_generation", "code_debugging", "factual_knowledge"]},
-}
-
 
 def _normalize_allowed(allowed: Optional[Iterable[str]]) -> List[str]:
     if not allowed:
@@ -29,6 +18,24 @@ def _normalize_allowed(allowed: Optional[Iterable[str]]) -> List[str]:
             return []
         allowed = [m.strip() for m in env.split(",") if m.strip()]
     return [m for m in allowed]
+
+
+def _tier_index(category: Optional[str], count: int, confidence: float) -> int:
+    if count <= 1:
+        return 0
+
+    if category in {"code_generation", "code_debugging", "mathematical_reasoning", "logical_deductive_reasoning"}:
+        if confidence < 0.4:
+            return min(count - 1, 2)
+        if confidence < 0.75:
+            return min(count - 1, 1)
+        return 0
+
+    if confidence < 0.4:
+        return count - 1
+    if confidence < 0.75:
+        return min(count - 1, 1)
+    return 0
 
 
 def select_model(classification: Dict[str, object], allowed_models: Optional[Iterable[str]] = None) -> Tuple[Optional[str], Dict[str, object]]:
@@ -48,39 +55,14 @@ def select_model(classification: Dict[str, object], allowed_models: Optional[Ite
         rationale["reason"] = "no_allowed_models"
         return None, rationale
 
-    # Candidate filtering: models that claim the category capability
-    candidates: List[str] = []
-    for m in allowed:
-        prof = MODEL_PROFILES.get(m)
-        if prof and category in prof.get("capabilities", []):
-            candidates.append(m)
+    index = _tier_index(category, len(allowed), confidence)
+    chosen = allowed[index]
 
-    # If no candidates matched capability, fall back to allowed order
-    if not candidates:
-        candidates = list(allowed)
-        rationale["fallback"] = "no_capability_match"
-
-    # Scoring: prefer lower size_rank for higher confidence, otherwise pick first
-    def score(m: str) -> int:
-        prof = MODEL_PROFILES.get(m)
-        if not prof:
-            return 999
-        return prof.get("size_rank", 999)
-
-    candidates.sort(key=lambda x: score(x))
-
-    # Threshold logic: if low confidence, pick a larger model if available
     if confidence < 0.4:
-        # pick the largest allowed candidate (max size_rank)
-        chosen = max(candidates, key=lambda x: MODEL_PROFILES.get(x, {}).get("size_rank", 999))
         rationale["reason"] = "low_confidence_choose_more_capable"
     elif confidence < 0.75:
-        # medium confidence: pick medium-sized candidate
-        chosen = candidates[min(1, len(candidates) - 1)]
         rationale["reason"] = "medium_confidence"
     else:
-        # high confidence: pick smallest candidate
-        chosen = candidates[0]
         rationale["reason"] = "high_confidence_choose_smallest"
 
     rationale["chosen"] = chosen
@@ -89,9 +71,7 @@ def select_model(classification: Dict[str, object], allowed_models: Optional[Ite
 
 if __name__ == "__main__":
     # quick manual test
-    import json
-
-    os.environ["ALLOWED_MODELS"] = "minimax-m3,kimi-k2p7-code,gemma-4-31b-it"
+    os.environ["ALLOWED_MODELS"] = "model-a,model-b,model-c"
     examples = [
         ({"category": "text_summarisation", "confidence": 0.9}),
         ({"category": "code_generation", "confidence": 0.85}),

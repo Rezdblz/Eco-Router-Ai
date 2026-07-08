@@ -25,7 +25,6 @@ from typing import Dict, Optional
 import os
 
 from app.clients.fireworks_client import call_chat_model, extract_message_text
-from app.router.model_selector import MODEL_PROFILES
 
 _PATTERNS = [
     (re.compile(r"\b(summariz|summary|summarise|summarize)\b", re.I), "text_summarisation", 0.9),
@@ -43,6 +42,22 @@ def _normalize(text: str) -> str:
     return (text or "").strip()
 
 
+def _allowed_models() -> list[str]:
+    allowed = os.environ.get("ALLOWED_MODELS")
+    if not allowed:
+        return []
+    return [m.strip() for m in allowed.split(",") if m.strip()]
+
+
+def _router_model(allowed: list[str]) -> str | None:
+    explicit = os.environ.get("ROUTER_MODEL")
+    if explicit:
+        explicit = explicit.strip()
+        if explicit and explicit in allowed:
+            return explicit
+    return allowed[0] if allowed else None
+
+
 def classify(prompt: str) -> Dict[str, object]:
     """Classify a prompt into one of the predefined categories.
 
@@ -51,7 +66,39 @@ def classify(prompt: str) -> Dict[str, object]:
     """
     text = _normalize(prompt)
     if not text:
-        return {"category": "factual_knowledge", "confidence": 0.0}
+        return {"category": "factual_knowledge", "confidence": 0.0, "method": "rules"}
+
+    allowed = _allowed_models()
+    model_name = _router_model(allowed)
+
+    if model_name:
+        instruct = (
+            "You are a router for user prompts. Choose one category only from: "
+            "factual_knowledge, mathematical_reasoning, sentiment_classification, text_summarisation, "
+            "named_entity_recognition, code_debugging, logical_deductive_reasoning, code_generation. "
+            "Respond ONLY with a JSON object with keys 'category' and 'confidence' (0.0-1.0).\n\n"
+            f"Prompt: {text}\n"
+        )
+        resp = call_chat_model(instruct, model_name)
+        if resp:
+            out_text = extract_message_text(resp)
+            if out_text:
+                import json
+
+                try:
+                    parsed = json.loads(out_text)
+                    if isinstance(parsed, dict) and "category" in parsed:
+                        confidence = float(parsed.get("confidence", 0.0))
+                        if confidence >= 0.4:
+                            return {
+                                "category": parsed.get("category"),
+                                "confidence": confidence,
+                                "method": "ai_router",
+                                "router_model": model_name,
+                            }
+                except Exception:
+                    # ignore parsing errors and fall back to rules
+                    pass
 
     scores = []
     # apply patterns
@@ -70,56 +117,16 @@ def classify(prompt: str) -> Dict[str, object]:
         # small boost if prompt is short and explicit
         explicitness = 1.0 if len(text.split()) < 8 else 0.0
         confidence = min(1.0, best_conf + 0.05 * explicitness)
-        return {"category": best_cat, "confidence": round(confidence, 2)}
-
-    # fallback heuristics: look for question words or code markers
-    # determine classifier model: prefer explicit CLASSIFIER_MODEL, otherwise
-    # choose the lightest model from ALLOWED_MODELS (if provided)
-    model_name = os.environ.get("CLASSIFIER_MODEL")
-    if not model_name:
-        allowed = os.environ.get("ALLOWED_MODELS")
-        if allowed:
-            allowed_list = [m.strip() for m in allowed.split(",") if m.strip()]
-            # prefer models with known profiles, pick smallest size_rank
-            candidates = [m for m in allowed_list if m in MODEL_PROFILES]
-            if candidates:
-                model_name = min(candidates, key=lambda m: MODEL_PROFILES[m].get("size_rank", 999))
-            else:
-                # fall back to first allowed model if profiles unknown
-                model_name = allowed_list[0] if allowed_list else None
-
-    if model_name:
-        # craft a small instruction asking for JSON output
-        instruct = (
-            "You are a classifier that maps user prompts to one of the categories: "
-            "factual_knowledge, mathematical_reasoning, sentiment_classification, text_summarisation, "
-            "named_entity_recognition, code_debugging, logical_deductive_reasoning, code_generation. "
-            "Respond ONLY with a JSON object with keys 'category' and 'confidence' (0.0-1.0).\n\n"
-            f"Prompt: {text}\n"
-        )
-        resp = call_chat_model(instruct, model_name)
-        if resp:
-            out_text = extract_message_text(resp)
-            if out_text:
-                # try to parse a simple JSON substring
-                import json
-
-                try:
-                    parsed = json.loads(out_text)
-                    if isinstance(parsed, dict) and "category" in parsed:
-                        return {"category": parsed.get("category"), "confidence": float(parsed.get("confidence", 0.0))}
-                except Exception:
-                    # ignore parsing errors and fall back to rules
-                    pass
+        return {"category": best_cat, "confidence": round(confidence, 2), "method": "rules"}
 
     if "```" in text or "def " in text or "class " in text:
-        return {"category": "code_generation", "confidence": 0.6}
+        return {"category": "code_generation", "confidence": 0.6, "method": "rules"}
 
     if text.endswith("?"):
-        return {"category": "factual_knowledge", "confidence": 0.6}
+        return {"category": "factual_knowledge", "confidence": 0.6, "method": "rules"}
 
     # default
-    return {"category": "factual_knowledge", "confidence": 0.4}
+    return {"category": "factual_knowledge", "confidence": 0.4, "method": "rules"}
 
 
 def classify_task(task: Dict[str, object]) -> Dict[str, object]:
