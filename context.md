@@ -77,12 +77,8 @@ on launch day
 For local development you can use a .env file, but your submitted container must read these
 purely from the environment: the harness will inject the real values at evaluation time.
 Variable Description
-FIREWORKS_API_KEY Provided by the harness — use this key, not
-
-your own
-
+FIREWORKS_API_KEY Provided by the harness — use this key, notyour own
 FIREWORKS_BASE_URL Base URL for all Fireworks API calls — must
-
 be used to configure your client
 
 ALLOWED_MODELS Comma-separated list of permitted Fireworks

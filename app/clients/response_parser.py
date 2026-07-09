@@ -39,33 +39,100 @@ def extract_message_text(response: Dict[str, Any]) -> Optional[str]:
 
     return None
 
+def call_inference_model(
+    prompt: str,
+    model: str,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+    timeout: int = 10,
+    max_tokens: int = 256,
+) -> Optional[Dict[str, Any]]:
 
-def call_chat_model(prompt: str, model: str, base_url: Optional[str] = None, api_key: Optional[str] = None, timeout: int = 10, max_tokens: int = 256) -> Optional[Dict[str, Any]]:
-    """Call a chat-style endpoint at the Fireworks proxy and return parsed JSON.
+    return _post_chat_request(
+        model=model,
+        messages=[
+            {
+                "role": "user",
+                "content": prompt,
+            }
+        ],
+        temperature=0,
+        max_tokens=max_tokens,
+        base_url=base_url,
+        api_key=api_key,
+        timeout=timeout,
+    )
+    
+def call_router_model(
+    prompt: str,
+    model: str,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+    timeout: int = 10,
+) -> Optional[Dict[str, Any]]:
 
-    Returns the provider response as a dict on success, or None on failure.
-    The function attempts to call `${base_url}/v1/chat/completions` which is
-    compatible with many OpenAI-compatible proxies. If `base_url` or `api_key`
-    are not provided, the function will read them from the environment.
-    """
+    return _post_chat_request(
+        model=model,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are an AI routing classifier."
+                    "Return ONLY valid JSON."
+                ),
+            },
+            {
+                "role": "user",
+                "content": prompt,
+            },
+        ],
+        temperature=0,
+        max_tokens=24,
+        base_url=base_url,
+        api_key=api_key,
+        timeout=timeout,
+    )
+
+def _post_chat_request(
+    *,
+    model: str,
+    messages: list[dict[str, str]],
+    max_tokens: int,
+    temperature: float,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+    timeout: int = 10,
+) -> Optional[Dict[str, Any]]:
+
     base = base_url or os.environ.get("FIREWORKS_BASE_URL")
     key = api_key or os.environ.get("FIREWORKS_API_KEY")
+
     if not base or not key:
         return None
 
     url = _build_chat_completions_url(base)
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    data = {
+
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
         "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.0,
+        "messages": messages,
+        "temperature": temperature,
         "max_tokens": max_tokens,
     }
 
     try:
         with httpx.Client(timeout=timeout) as client:
-            resp = client.post(url, json=data, headers=headers)
-            resp.raise_for_status()
-            return resp.json()
+            response = client.post(
+                url,
+                json=payload,
+                headers=headers,
+            )
+            response.raise_for_status()
+            return response.json()
+
     except Exception:
         return None

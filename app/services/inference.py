@@ -9,7 +9,7 @@ from typing import Any
 import logging
 
 from app.clients.response_parser import (
-    call_chat_model,
+    call_inference_model,
     extract_message_text,
 )
 from app.core.config import Settings
@@ -119,7 +119,7 @@ def _call_once(
 
     started = perf_counter()
 
-    response = call_chat_model(
+    response = call_inference_model(
         prompt,
         model,
         base_url=settings.fireworks_base_url,

@@ -20,14 +20,16 @@ Functions:
 """
 from __future__ import annotations
 
-import json
+
 import re
 from pathlib import Path
 from typing import Dict, Optional
 import os
 
-from app.clients.response_parser import call_chat_model, extract_message_text
-
+from app.clients.response_parser import (
+    call_router_model,
+    extract_message_text,
+)
 MODEL_CAPABILITIES_PATH = Path(__file__).with_name("model_capabilities.json")
 
 _PATTERNS = [
@@ -76,51 +78,6 @@ def _extract_usage(response: object) -> dict[str, int]:
         "total_tokens": total_tokens,
     }
 
-
-def _router_capability_context() -> str:
-    return (
-        "Capability context: factual_knowledge = explanations and definitions; "
-        "mathematical_reasoning = arithmetic, percentages, and word problems; "
-        "sentiment_classification = positive/negative/neutral labeling; "
-        "text_summarisation = concise condensation of passages; "
-        "named_entity_recognition = people, organizations, locations, and dates; "
-        "code_debugging = finding bugs and correcting code; "
-        "logical_deductive_reasoning = constraint puzzles and logic checks; "
-        "code_generation = writing functions or code from a spec."
-    )
-
-
-def _load_model_capabilities() -> dict[str, str]:
-    if not MODEL_CAPABILITIES_PATH.exists():
-        return {}
-
-    try:
-        raw = MODEL_CAPABILITIES_PATH.read_text(encoding="utf-8")
-        parsed = json.loads(raw)
-    except Exception:
-        return {}
-
-    if not isinstance(parsed, dict):
-        return {}
-
-    return {
-        str(key).strip(): str(value).strip()
-        for key, value in parsed.items()
-        if str(key).strip() and str(value).strip()
-    }
-
-
-def _router_model_capabilities(allowed: list[str]) -> str:
-    capabilities = _load_model_capabilities()
-    if not capabilities:
-        return "Model capabilities are not provided; use allowed model IDs only."
-
-    entries = [f"{model} = {capabilities[model]}" for model in allowed if model in capabilities]
-    if not entries:
-        return "Model capabilities are not provided for the currently allowed models."
-    return "Model capabilities: " + "; ".join(entries) + "."
-
-
 def classify(prompt: str) -> Dict[str, object]:
     """Classify a prompt into one of the predefined categories.
 
@@ -130,23 +87,34 @@ def classify(prompt: str) -> Dict[str, object]:
     text = _normalize(prompt)
     if not text:
         return {"category": "factual_knowledge", "confidence": 0.0, "method": "rules"}
+    rule_result = _classify_rules(text)
 
+    if rule_result["confidence"] >= 0.85:
+        return rule_result
+    
     allowed = _allowed_models()
     model_name = _router_model(allowed)
 
     if model_name:
-        allowed_models_text = ", ".join(allowed)
         instruct = (
-            "You are a router for user prompts. Choose one category only from: "
-            "factual_knowledge, mathematical_reasoning, sentiment_classification, text_summarisation, "
-            "named_entity_recognition, code_debugging, logical_deductive_reasoning, code_generation. "
-            f"{_router_capability_context()} "
-            f"{_router_model_capabilities(allowed)} "
-            f"Available router models: {allowed_models_text}. "
-            "Respond ONLY with a JSON object with keys 'category' and 'confidence' (0.0-1.0).\n\n"
-            f"Prompt: {text}\n"
+            "Classify the task into one category.\n"
+            "Categories:\n"
+            "- factual_knowledge\n"
+            "- mathematical_reasoning\n"
+            "- sentiment_classification\n"
+            "- text_summarisation\n"
+            "- named_entity_recognition\n"
+            "- code_debugging\n"
+            "- logical_deductive_reasoning\n"
+            "- code_generation\n\n"
+            'Return ONLY JSON: {"category":"...","confidence":0.0}\n\n'
+            f"Task:\n{text}"
         )
-        resp = call_chat_model(instruct, model_name)
+        
+        resp = call_router_model(
+            instruct,
+            model_name,
+        )
         if resp:
             out_text = extract_message_text(resp)
             router_usage = _extract_usage(resp)
@@ -157,6 +125,7 @@ def classify(prompt: str) -> Dict[str, object]:
                     parsed = json.loads(out_text)
                     if isinstance(parsed, dict) and "category" in parsed:
                         confidence = float(parsed.get("confidence", 0.0))
+                        
                         if confidence >= 0.4:
                             return {
                                 "category": parsed.get("category"),
@@ -165,38 +134,12 @@ def classify(prompt: str) -> Dict[str, object]:
                                 "router_model": model_name,
                                 "router_usage": router_usage,
                             }
+                            
                 except Exception:
                     # ignore parsing errors and fall back to rules
                     pass
-
-    scores = []
-    # apply patterns
-    for pattern, category, base_conf in _PATTERNS:
-        if pattern.search(text):
-            scores.append((category, base_conf))
-
-    if scores:
-        # choose highest base_conf; if multiple same category matches, boost confidence
-        agg = {}
-        for cat, conf in scores:
-            agg[cat] = max(agg.get(cat, 0.0), conf)
-
-        # pick best
-        best_cat, best_conf = max(agg.items(), key=lambda x: x[1])
-        # small boost if prompt is short and explicit
-        explicitness = 1.0 if len(text.split()) < 8 else 0.0
-        confidence = min(1.0, best_conf + 0.05 * explicitness)
-        return {"category": best_cat, "confidence": round(confidence, 2), "method": "rules"}
-
-    if "```" in text or "def " in text or "class " in text:
-        return {"category": "code_generation", "confidence": 0.6, "method": "rules"}
-
-    if text.endswith("?"):
-        return {"category": "factual_knowledge", "confidence": 0.6, "method": "rules"}
-
-    # default
-    return {"category": "factual_knowledge", "confidence": 0.4, "method": "rules"}
-
+                
+                return rule_result
 
 def classify_task(task: Dict[str, object]) -> Dict[str, object]:
     """Classify a task dict. Expects a `prompt` field.
@@ -209,15 +152,69 @@ def classify_task(task: Dict[str, object]) -> Dict[str, object]:
     out["classification"] = cls
     return out
 
+def _classify_rules(text: str) -> Dict[str, object]:
+    """
+    Rule-based classifier.
 
-if __name__ == "__main__":
-    # quick manual smoke test
-    examples = [
-        "Summarise the following text in one sentence: The quick brown...",
-        "Fix the bug in this function that raises a TypeError",
-        "Calculate the percentage increase from 50 to 75",
-        "Write a Python function that reverses a string",
-        "Is climate change real?",
-    ]
-    for e in examples:
-        print(e, "=>", classify(e))
+    Returns:
+    {
+        "category": str,
+        "confidence": float,
+        "method": "rules",
+    }
+    """
+
+    scores: list[tuple[str, float]] = []
+
+    # Apply regex patterns
+    for pattern, category, base_conf in _PATTERNS:
+        if pattern.search(text):
+            scores.append((category, base_conf))
+
+    if scores:
+        # Keep the highest confidence for each category
+        aggregated: dict[str, float] = {}
+
+        for category, confidence in scores:
+            aggregated[category] = max(
+                aggregated.get(category, 0.0),
+                confidence,
+            )
+
+        best_category, best_confidence = max(
+            aggregated.items(),
+            key=lambda item: item[1],
+        )
+
+        # Small confidence boost for short, explicit prompts
+        if len(text.split()) < 8:
+            best_confidence = min(best_confidence + 0.05, 1.0)
+
+        return {
+            "category": best_category,
+            "confidence": round(best_confidence, 2),
+            "method": "rules",
+        }
+
+    # Detect obvious code
+    if any(token in text for token in ("```", "def ", "class ", "function ", "import ")):
+        return {
+            "category": "code_generation",
+            "confidence": 0.65,
+            "method": "rules",
+        }
+
+    # Questions usually request factual knowledge
+    if text.endswith("?"):
+        return {
+            "category": "factual_knowledge",
+            "confidence": 0.60,
+            "method": "rules",
+        }
+
+    # Default fallback
+    return {
+        "category": "factual_knowledge",
+        "confidence": 0.40,
+        "method": "rules",
+    }
