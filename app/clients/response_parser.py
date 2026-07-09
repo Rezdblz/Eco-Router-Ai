@@ -1,8 +1,9 @@
-import os
 from typing import Any, Dict, Optional
 import httpx
-import json
+import logging
 from app.clients.fireworks_client import _build_chat_completions_url
+
+logger = logging.getLogger(__name__)
 
 def extract_message_text(response: Dict[str, Any]) -> Optional[str]:
     """
@@ -42,8 +43,8 @@ def extract_message_text(response: Dict[str, Any]) -> Optional[str]:
 def call_inference_model(
     prompt: str,
     model: str,
-    base_url: Optional[str] = None,
-    api_key: Optional[str] = None,
+    base_url: str ,
+    api_key: str ,
     timeout: int = 10,
     max_tokens: int = 256,
 ) -> Optional[Dict[str, Any]]:
@@ -56,7 +57,7 @@ def call_inference_model(
                 "content": prompt,
             }
         ],
-        temperature=0,
+        temperature=0.0,
         max_tokens=max_tokens,
         base_url=base_url,
         api_key=api_key,
@@ -66,8 +67,8 @@ def call_inference_model(
 def call_router_model(
     prompt: str,
     model: str,
-    base_url: Optional[str] = None,
-    api_key: Optional[str] = None,
+    base_url: str = None,
+    api_key: str = None,
     timeout: int = 10,
 ) -> Optional[Dict[str, Any]]:
 
@@ -86,7 +87,7 @@ def call_router_model(
                 "content": prompt,
             },
         ],
-        temperature=0,
+        temperature=0.0,
         max_tokens=24,
         base_url=base_url,
         api_key=api_key,
@@ -99,22 +100,16 @@ def _post_chat_request(
     messages: list[dict[str, str]],
     max_tokens: int,
     temperature: float,
-    base_url: Optional[str] = None,
-    api_key: Optional[str] = None,
+    base_url: str,
+    api_key: str,
     timeout: int = 10,
 ) -> Optional[Dict[str, Any]]:
 
-    base = base_url or os.environ.get("FIREWORKS_BASE_URL")
-    key = api_key or os.environ.get("FIREWORKS_API_KEY")
-
-    if not base or not key:
-        return None
-
-    url = _build_chat_completions_url(base)
+    url = _build_chat_completions_url(base_url)
 
     headers = {
-        "Authorization": f"Bearer {key}",
-        "Content-Type": "application/json",
+    "Authorization": f"Bearer {api_key}",
+    "Content-Type": "application/json",
     }
 
     payload = {
@@ -133,6 +128,7 @@ def _post_chat_request(
             )
             response.raise_for_status()
             return response.json()
-
-    except Exception:
+        
+    except Exception as exc:
+        logger.exception("Fireworks request failed: %s", exc)
         return None

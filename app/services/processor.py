@@ -25,12 +25,20 @@ class ClassificationResult:
     router_usage: dict[str, int]
 
 
-def extract_classification(task: Any) -> ClassificationResult:
+def extract_classification(
+    task: Any,
+    settings: Settings,
+):
     """
     Run the router/classifier and normalize its output.
     """
 
-    classified = classify_task(task.model_dump())
+    classified = classify_task(
+        task.model_dump(),
+        settings.router_model,
+        settings.fireworks_base_url,
+        settings.fireworks_api_key,
+    )
 
     classification = classified.get("classification", {})
     if not isinstance(classification, dict):
@@ -59,7 +67,10 @@ def process_task(
     Process a single task.
     """
 
-    routing = extract_classification(task)
+    routing = extract_classification(
+        task,
+        settings,
+    )
 
     chosen_model, rationale = select_model(
         routing.classification,

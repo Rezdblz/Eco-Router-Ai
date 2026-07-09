@@ -6,7 +6,7 @@ try:
     from dotenv import load_dotenv
     # Load .env immediately - this populates os.environ with values from .env
     # The load_dotenv will read the ENVIRONMENT variable if it exists in .env
-    load_dotenv(override=True)  # override=True ensures .env values take precedence
+    load_dotenv() 
 except ImportError:
     pass
 
@@ -15,6 +15,7 @@ class Settings(BaseModel):
     fireworks_api_key: str
     fireworks_base_url: str
     allowed_models: list[str]
+    router_model: str
 
     input_path: str = "/input/tasks.json"
     output_path: str = "/output/results.json"
@@ -67,16 +68,45 @@ def load_settings() -> Settings:
     base_url = _require_env("FIREWORKS_BASE_URL")
     allowed_models = _require_env("ALLOWED_MODELS")
 
+    models = [m.strip() for m in allowed_models.split(",") if m.strip()]
+
+    router_model = os.getenv("ROUTER_MODEL", "").strip()
+
+    if not router_model:
+        router_model = models[0]
     return Settings(
         fireworks_api_key=api_key,
         fireworks_base_url=base_url,
-        allowed_models=allowed_models,
-        input_path=os.getenv("INPUT_PATH", "./input/tasks.json"),
-        output_path=os.getenv("OUTPUT_PATH", "./output/results.json"),
-        analytics_output_path=os.getenv("ANALYTICS_PATH", "./output/analytics.json"),
-        analytics_history_dir=os.getenv("ANALYTICS_HISTORY_DIR", "./output/analytics_logs"),
+
+        allowed_models=models,
+        router_model=router_model,
+
+        input_path=os.getenv("INPUT_PATH", "/input/tasks.json"),
+        output_path=os.getenv("OUTPUT_PATH", "/output/results.json"),
+
+        analytics_output_path=os.getenv(
+            "ANALYTICS_PATH",
+            "/output/analytics.json",
+        ),
+        analytics_history_dir=os.getenv(
+            "ANALYTICS_HISTORY_DIR",
+            "/output/analytics_logs",
+        ),
+
         log_level=os.getenv("LOG_LEVEL", "INFO"),
-        default_temperature=_parse_numeric("DEFAULT_TEMPERATURE", float, "0.0"),
-        max_retries=_parse_numeric("MAX_RETRIES", int, "3"),
-        request_timeout=_parse_numeric("REQUEST_TIMEOUT", int, "60"),
+        default_temperature=_parse_numeric(
+            "DEFAULT_TEMPERATURE",
+            float,
+            "0.0",
+        ),
+        max_retries=_parse_numeric(
+            "MAX_RETRIES",
+            int,
+            "3",
+        ),
+        request_timeout=_parse_numeric(
+            "REQUEST_TIMEOUT",
+            int,
+            "60",
+        ),
     )

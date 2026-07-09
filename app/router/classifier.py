@@ -20,17 +20,14 @@ Functions:
 """
 from __future__ import annotations
 
-
+import json
 import re
-from pathlib import Path
-from typing import Dict, Optional
-import os
+from typing import Dict
 
 from app.clients.response_parser import (
     call_router_model,
     extract_message_text,
 )
-MODEL_CAPABILITIES_PATH = Path(__file__).with_name("model_capabilities.json")
 
 _PATTERNS = [
     (re.compile(r"\b(summariz|summary|summarise|summarize)\b", re.I), "text_summarisation", 0.9),
@@ -47,23 +44,6 @@ _PATTERNS = [
 def _normalize(text: str) -> str:
     return (text or "").strip()
 
-
-def _allowed_models() -> list[str]:
-    allowed = os.environ.get("ALLOWED_MODELS")
-    if not allowed:
-        return []
-    return [m.strip() for m in allowed.split(",") if m.strip()]
-
-
-def _router_model(allowed: list[str]) -> str | None:
-    explicit = os.environ.get("ROUTER_MODEL")
-    if explicit:
-        explicit = explicit.strip()
-        if explicit and explicit in allowed:
-            return explicit
-    return allowed[0] if allowed else None
-
-
 def _extract_usage(response: object) -> dict[str, int]:
     usage = response.get("usage") if isinstance(response, dict) else None
     if not isinstance(usage, dict):
@@ -78,7 +58,12 @@ def _extract_usage(response: object) -> dict[str, int]:
         "total_tokens": total_tokens,
     }
 
-def classify(prompt: str) -> Dict[str, object]:
+def classify(
+        prompt: str,
+        router_model: str,
+        base_url: str,
+        api_key: str,
+    ) -> Dict[str, object]:
     """Classify a prompt into one of the predefined categories.
 
     Returns a dict with `category` (str) and `confidence` (0.0-1.0).
@@ -91,11 +76,7 @@ def classify(prompt: str) -> Dict[str, object]:
 
     if rule_result["confidence"] >= 0.85:
         return rule_result
-    
-    allowed = _allowed_models()
-    model_name = _router_model(allowed)
-
-    if model_name:
+    if router_model:
         instruct = (
             "Classify the task into one category.\n"
             "Categories:\n"
@@ -113,41 +94,51 @@ def classify(prompt: str) -> Dict[str, object]:
         
         resp = call_router_model(
             instruct,
-            model_name,
+            router_model,
+            base_url,
+            api_key,
         )
         if resp:
             out_text = extract_message_text(resp)
             router_usage = _extract_usage(resp)
-            if out_text:
-                import json
 
-                try:
-                    parsed = json.loads(out_text)
-                    if isinstance(parsed, dict) and "category" in parsed:
-                        confidence = float(parsed.get("confidence", 0.0))
+            try:
+                parsed = json.loads(out_text)
+                if isinstance(parsed, dict) and "category" in parsed:
+                    confidence = float(parsed.get("confidence", 0.0))
+                    
+                    if confidence >= 0.4:
+                        return {
+                            "category": parsed.get("category"),
+                            "confidence": confidence,
+                            "method": "ai_router",
+                            "router_model": router_model,
+                            "router_usage": router_usage,
+                        }
                         
-                        if confidence >= 0.4:
-                            return {
-                                "category": parsed.get("category"),
-                                "confidence": confidence,
-                                "method": "ai_router",
-                                "router_model": model_name,
-                                "router_usage": router_usage,
-                            }
-                            
-                except Exception:
-                    # ignore parsing errors and fall back to rules
-                    pass
-                
-                return rule_result
+            except Exception:
+                # ignore parsing errors and fall back to rules
+                pass
+            
+            return rule_result
 
-def classify_task(task: Dict[str, object]) -> Dict[str, object]:
+def classify_task(
+        task: Dict[str, object],
+        router_model: str,
+        base_url: str,
+        api_key: str,
+    ) -> Dict[str, object]:
     """Classify a task dict. Expects a `prompt` field.
 
     Returns the original task augmented with `classification` key.
     """
     prompt = task.get("prompt") if isinstance(task, dict) else None
-    cls = classify(prompt or "")
+    cls = classify(
+        prompt or "",
+        router_model,
+        base_url,
+        api_key,
+    )
     out = dict(task)
     out["classification"] = cls
     return out
