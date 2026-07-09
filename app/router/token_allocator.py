@@ -1,4 +1,96 @@
 import math
+
+
+CATEGORY_BASES = {
+    "sentiment_classification": 24,
+    "named_entity_recognition": 96,
+    "text_summarisation": 144,
+    "mathematical_reasoning": 112,
+    "factual_knowledge": 112,
+    "logical_deductive_reasoning": 144,
+    "code_generation": 288,
+    "code_debugging": 352,
+}
+
+CATEGORY_MULTIPLIERS = {
+    "sentiment_classification": 0.9,
+    "named_entity_recognition": 1.15,
+    "text_summarisation": 1.2,
+    "mathematical_reasoning": 1.15,
+    "factual_knowledge": 1.25,
+    "logical_deductive_reasoning": 1.2,
+    "code_generation": 1.25,
+    "code_debugging": 1.3,
+}
+
+
+def _prompt_complexity_bonus(words: int) -> int:
+    if words > 500:
+        return 224
+    if words > 300:
+        return 160
+    if words > 150:
+        return 96
+    if words > 75:
+        return 48
+    if words > 25:
+        return 24
+    return 0
+
+
+def _structure_bonus(prompt: str) -> int:
+    bonus = 0
+
+    if "```" in prompt:
+        bonus += 128
+
+    if "|" in prompt:
+        bonus += 48
+
+    if prompt.count("\n") > 20:
+        bonus += 64
+
+    reasoning_keywords = (
+        "explain",
+        "why",
+        "prove",
+        "derive",
+        "reason",
+        "compare",
+        "analyze",
+        "analyse",
+        "justify",
+    )
+
+    if any(k in prompt.lower() for k in reasoning_keywords):
+        bonus += 48
+
+    return bonus
+
+
+def _model_multiplier(model_id: str) -> float:
+    model = model_id.lower()
+
+    if "minimax" in model or "m3" in model:
+        return 0.9
+
+    if "gemma" in model:
+        return 1.1
+
+    if "kimi" in model:
+        return 1.25
+
+    return 1.0
+
+
+def _category_multiplier(category: str | None) -> float:
+    return CATEGORY_MULTIPLIERS.get(category, 1.0)
+
+
+def _category_floor(category: str | None) -> int:
+    return CATEGORY_BASES.get(category, 96)
+
+
 def allocate_tokens(
     model_id: str,
     category: str | None,
@@ -13,70 +105,23 @@ def allocate_tokens(
     The goal is to minimize token usage while avoiding truncation.
     """
 
-    # Base allocation per task category
-    base = {
-        "sentiment_classification": 24,
-        "named_entity_recognition": 48,
-        "text_summarisation": 72,
-        "mathematical_reasoning": 96,
-        "factual_knowledge": 128,
-        "logical_deductive_reasoning": 192,
-        "code_generation": 320,
-        "code_debugging": 384,
-    }.get(category, 128)
-
-    # Prompt complexity
     words = len(prompt.split())
 
-    if words > 500:
-        base += 192
-    elif words > 300:
-        base += 128
-    elif words > 150:
-        base += 64
-    elif words > 75:
-        base += 32
+    base = _category_floor(category)
+    base += _prompt_complexity_bonus(words)
+    base += _structure_bonus(prompt)
 
-    # Detect code
-    if "```" in prompt:
-        base += 128
+    # Longer factual and summarization prompts need proportionally more room.
+    if category in {"factual_knowledge", "text_summarisation"}:
+        base += int(math.ceil(words * 0.8))
+    elif category == "named_entity_recognition":
+        base += int(math.ceil(words * 0.45))
+    elif category in {"mathematical_reasoning", "logical_deductive_reasoning"}:
+        base += int(math.ceil(words * 0.35))
+    elif category in {"code_generation", "code_debugging"}:
+        base += int(math.ceil(words * 0.5))
 
-    # Detect tables
-    if "|" in prompt:
-        base += 48
+    base = int(math.ceil(base * _category_multiplier(category)))
+    base = int(math.ceil(base * _model_multiplier(model_id)))
 
-    # Detect long numbered lists
-    if prompt.count("\n") > 20:
-        base += 64
-
-    # Detect reasoning keywords
-    reasoning_keywords = (
-        "explain",
-        "why",
-        "prove",
-        "derive",
-        "reason",
-        "compare",
-        "analyze",
-        "analyse",
-        "justify",
-    )
-
-    if any(k in prompt.lower() for k in reasoning_keywords):
-        base += 64
-
-    model = model_id.lower()
-
-    # Small fast models
-    if "minimax" in model or "m3" in model:
-        base *= 0.9
-
-    # Medium models
-    elif "gemma" in model:
-        base *= 1.1
-
-    # Large reasoning/code models
-    elif "kimi" in model:
-        base *= 1.25
-
-    return max(24, min(int(math.ceil(base)), 1024))
+    return max(24, min(base, 1024))

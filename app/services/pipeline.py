@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from app.core.config import Settings
 from app.io.reader import load_tasks
@@ -21,6 +22,8 @@ logger = logging.getLogger("eco_router")
 
 
 def run_pipeline(settings: Settings) -> int:
+    _clear_previous_results(settings.output_path)
+
     # Load tasks
     try:
         tasks = load_tasks(settings.input_path)
@@ -77,3 +80,11 @@ def run_pipeline(settings: Settings) -> int:
     )
 
     return 0
+
+
+def _clear_previous_results(output_path: str) -> None:
+    path = Path(output_path)
+    try:
+        path.unlink(missing_ok=True)
+    except Exception:
+        logger.warning("Could not clear previous results file: %s", path)
