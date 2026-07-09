@@ -1,0 +1,6 @@
+# Runtime and dev dependencies
+httpx
+python-dotenv
+orjson
+pydantic
+pytest

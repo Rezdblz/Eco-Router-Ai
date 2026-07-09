@@ -1,0 +1,79 @@
+"""Pipeline entrypoint."""
+from __future__ import annotations
+
+import logging
+
+from app.core.config import Settings
+from app.io.reader import load_tasks
+from app.io.writer import (
+    write_results,
+    write_analytics,
+    write_analytics_history,
+)
+
+from app.services.processor import process_task
+from app.services.analytics import (
+    make_run_artifacts,
+    build_summary,
+)
+
+logger = logging.getLogger("eco_router")
+
+
+def run_pipeline(settings: Settings) -> int:
+    # Load tasks
+    try:
+        tasks = load_tasks(settings.input_path)
+    except Exception as exc:
+        logger.exception("Failed to load tasks: %s", exc)
+        return 3
+
+    artifacts = make_run_artifacts()
+
+    # Execute pipeline
+    try:
+        for task in tasks:
+            result, analytics = process_task(
+                task,
+                settings,
+            )
+
+            artifacts.results.append(result)
+            artifacts.analytics_rows.append(analytics)
+            
+    except Exception as exc:
+        logger.exception("Pipeline execution failed: %s", exc)
+        return 5
+
+    # Write outputs
+    try:
+        write_results(
+            artifacts.results,
+            settings.output_path,
+        )
+
+        payload = {
+            "summary": build_summary(artifacts),
+            "tasks": artifacts.analytics_rows,
+        }
+
+        write_analytics(
+            payload,
+            settings.analytics_output_path,
+        )
+
+        write_analytics_history(
+            payload,
+            settings.analytics_history_dir,
+        )
+
+    except Exception as exc:
+        logger.exception("Failed writing outputs: %s", exc)
+        return 4
+
+    logger.info(
+        "Completed processing %d tasks",
+        len(artifacts.results),
+    )
+
+    return 0

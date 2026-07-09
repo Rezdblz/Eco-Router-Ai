@@ -1,0 +1,7 @@
+{
+  "accounts/fireworks/models/minimax-m3": "fast general-purpose default for simple factual, classification, and summarization work",
+  "accounts/fireworks/models/kimi-k2p7-code": "strongest fit for code generation, code debugging, and structured reasoning",
+  "accounts/fireworks/models/gemma-4-31b-it": "larger general instruction model for harder multi-step tasks",
+  "accounts/fireworks/models/gemma-4-26b-a4b-it": "balanced mid-size instruction model for medium-complexity tasks",
+  "accounts/fireworks/models/gemma-4-31b-it-nvfp4": "31B instruction model optimized for efficiency and lower-cost inference"
+}

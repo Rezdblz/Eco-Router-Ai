@@ -1,3 +1,13 @@
+.env
+
+#result / analytics
+analytics.json
+results.json
+tasks.json
+output/analytics_logs/
+truth.json
+evaluation.csv
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -216,3 +226,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Claude Code
+CLAUDE.md
+.claude/

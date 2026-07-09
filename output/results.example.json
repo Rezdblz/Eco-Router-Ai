@@ -1,0 +1,14 @@
+[
+  {
+    "task_id": "t1",
+    "answer": "A quick brown fox leaps over a lazy dog."
+  },
+  {
+    "task_id": "t2",
+    "answer": "# String Reversal Function in Python\n\nHere are several implementations with type hints:\n\n## 1. Pythonic Approach (Slicing)\n\n```python\ndef reverse_string(text: str) -> str:\n    \"\"\"Return the reverse of the input string.\n    \n    Args:\n        text: The string to reverse.\n    \n    Returns:\n        The reversed string.\n    \"\"\"\n    return text[::-1]\n```\n\n## 2. Using `reversed()` and `join()`\n\n```python\ndef reverse_string(text: str) -> str:\n    \"\"\"Return the reverse of the input string using reversed().\"\"\"\n    return \"\".join(reversed(text))\n```\n\n## 3. Manual Loop Approach\n\n```python\ndef reverse_string(text: str) -> str:\n    \"\"\"Return the reverse of the input string using a loop.\"\"\"\n    result: list[str] = []\n    for"
+  },
+  {
+    "task_id": "t3",
+    "answer": "# Percentage Increase from 50 to 75\n\n## Formula\n$$\\text{Percentage Increase} = \\frac{\\text{New Value} - \\text{Old Value}}{\\text{Old Value}} \\times 100$$\n\n## Step-by-Step Calculation\n\n**Step 1:** Identify the values\n- Old Value = 50\n- New Value = 75\n\n**Step 2:** Find the difference (increase)\n$$75 - 50 = 25$$\n\n**Step 3:** Divide the difference by the old value\n$$\\frac{25}{50} = 0.5$$\n\n**Step 4:** Multiply by 100 to convert to a percentage\n$$0.5 \\times 100 = 50\\%$$\n\n## Result\n✅ **"
+  }
+]

@@ -1,0 +1,26 @@
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Git
+.git/
+.gitignore
+
+# Local secrets
+.env
+
+# Development files
+notebooks/
+tests/
+*.ipynb
+.DS_Store
+
+# Local runtime data
+output/*
+input/*
