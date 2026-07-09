@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Dict, Optional
 import os
 
-from app.clients.fireworks_client import call_chat_model, extract_message_text
+from app.clients.response_parser import call_chat_model, extract_message_text
 
 MODEL_CAPABILITIES_PATH = Path(__file__).with_name("model_capabilities.json")
 
