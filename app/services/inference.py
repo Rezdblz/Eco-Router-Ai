@@ -75,6 +75,7 @@ def execute_task(
             prompt,
             model,
             allocated,
+            category,
             settings,
             task.task_id,
         )
@@ -136,6 +137,7 @@ def _retry_if_truncated(
     prompt: str,
     model: str,
     allocated: int,
+    category: str | None,
     settings: Settings,
     task_id: str,
 ) -> tuple[dict[str, Any], float, int]:
@@ -148,11 +150,16 @@ def _retry_if_truncated(
     if finish_reason != "length":
         return response, 0.0, allocated
 
-    new_limit = min(allocated * 2, 2048)
+    new_limit = _dynamic_retry_limit(
+        category,
+        prompt,
+        allocated,
+    )
 
     logger.info(
-        "Task %s truncated. Retrying with %d tokens.",
+        "Task %s truncated (%s). Retrying with %d tokens.",
         task_id,
+        category,
         new_limit,
     )
 
@@ -215,3 +222,42 @@ def _log_failure(
             model,
             task_id,
         )
+
+
+def _dynamic_retry_limit(
+    category: str | None,
+    prompt: str,
+    allocated: int,
+) -> int:
+    retry_base = {
+        "factual_knowledge": 192,
+        "sentiment_classification": 80,
+        "text_summarisation": 256,
+        "named_entity_recognition": 192,
+        "mathematical_reasoning": 160,
+        "logical_deductive_reasoning": 224,
+        "code_generation": 384,
+        "code_debugging": 448,
+    }.get(category, 128)
+
+    words = len(prompt.split())
+
+    if words > 500:
+        retry_base += 128
+    elif words > 300:
+        retry_base += 96
+    elif words > 150:
+        retry_base += 64
+    elif words > 75:
+        retry_base += 32
+
+    if category in {
+        "factual_knowledge",
+        "text_summarisation",
+        "named_entity_recognition",
+    } and words > 40:
+        retry_base += 32
+
+    retry_floor = allocated + max(32, allocated // 4)
+
+    return min(max(retry_base, retry_floor), 1024)
