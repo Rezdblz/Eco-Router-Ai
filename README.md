@@ -1,229 +1,153 @@
 # Eco-Router-AI
 
-An intelligent AI agent for the AMD Developer Hackathon: ACT II — Track 1 (General-Purpose AI Agent). This agent reads natural language tasks, classifies them into one of 8 capability categories, routes each task to the most token-efficient Fireworks AI model, and outputs results in JSON format.
+Eco-Router-AI is a Fireworks-backed task router that reads JSON tasks, classifies each task into one of eight capability categories, selects an allowed model, and writes answers plus analytics back to disk.
 
-## Overview
+## What It Does
 
-**Eco-Router-AI** optimizes inference across multiple capability domains by:
-- 🎯 Classifying tasks into 8 predefined capability categories
-- 🧠 Routing to the most token-efficient model that maintains accuracy
-- ⚡ Maximizing cost and latency efficiency via Fireworks AI
-- 📦 Running in Docker with strict resource constraints (< 10GB, 10-minute runtime)
-
-## Capability Categories
-
-The agent handles tasks across all eight categories:
-
-| #   | Category                          | What it covers                                                  |
-| --- | --------------------------------- | --------------------------------------------------------------- |
-| 1   | **Factual Knowledge**             | Explaining concepts, definitions, how things work               |
-| 2   | **Mathematical Reasoning**        | Multi-step arithmetic, percentages, word problems, projections  |
-| 3   | **Sentiment Classification**      | Labeling sentiment and justifying the classification            |
-| 4   | **Text Summarization**            | Condensing passages to specific format or length constraints    |
-| 5   | **Named Entity Recognition**      | Extracting and labeling entities (person, org, location, date)  |
-| 6   | **Code Debugging**                | Identifying bugs in code snippets and providing corrections     |
-| 7   | **Logical / Deductive Reasoning** | Constraint-based puzzles where all conditions must be satisfied |
-| 8   | **Code Generation**               | Writing correct, well-structured functions from a spec          |
+- Reads tasks from [input/tasks.json](input/tasks.json)
+- Classifies each task before inference
+- Selects from the models listed in `ALLOWED_MODELS`
+- Writes results to [output/results.json](output/results.json)
+- Writes analytics to [output/analytics.json](output/analytics.json) and [output/analytics_logs/](output/analytics_logs)
 
 ## Requirements
 
-- **Python** 3.12+
-- **Docker** (for containerized deployment)
-- **Fireworks AI API** access and key
+- Python 3.12+
+- Fireworks AI API access
+- Docker if you want to run the containerized workflow
 
-## Getting Started
+## Quick Start
 
-### Local Development Setup
-
-1. **Install dependencies:**
+1. Install dependencies:
    ```bash
-   pip install httpx python-dotenv orjson pydantic pytest
+   pip install -r requirements.txt
    ```
 
-2. **Create a `.env` file** (development only):
-   ```
+2. Create a `.env` file for local runs:
+   ```env
    FIREWORKS_API_KEY=your_api_key_here
    FIREWORKS_BASE_URL=https://api.fireworks.ai/inference/v1
-   ALLOWED_MODELS=model1,model2,model3
+   ALLOWED_MODELS=model-a,model-b
    ```
 
-3. **Run the agent locally:**
+3. Run the pipeline:
    ```bash
-   python app/main.py
+   py -m app.main
    ```
 
-### Docker Build & Deployment
+## Docker
 
-1. **Build the Docker image:**
-   ```bash
-   docker build -t eco-router-ai:latest .
-   ```
+The repository includes [docker-compose.yml](docker-compose.yml) with the expected input/output mounts.
 
-2. **Run the container:**
-   ```bash
-   docker run --rm \
-     -e FIREWORKS_API_KEY=your_key \
-     -e FIREWORKS_BASE_URL=https://api.fireworks.ai/inference/v1 \
-     -e ALLOWED_MODELS=model1,model2 \
-     -v $(pwd)/input:/input \
-     -v $(pwd)/output:/output \
-     eco-router-ai:latest
-   ```
+```bash
+docker compose up --build
+```
 
-## Usage
+If you prefer plain Docker:
 
-### Input Format
+```bash
+docker build -t eco-router-ai:latest .
+docker run --rm \
+  --env-file .env \
+  -v $(Get-Location)/input:/input \
+  -v $(Get-Location)/output:/output \
+  eco-router-ai:latest
+```
 
-Place your tasks in `/input/tasks.json`:
+## Input Format
+
+`input/tasks.json` must contain a JSON array of task objects. Each task needs a `task_id` and `prompt`.
+
 ```json
 [
   {
     "task_id": "t1",
-    "prompt": "Summarize the following text in one sentence: ..."
+    "prompt": "Summarize the following text in one sentence."
   },
   {
     "task_id": "t2",
-    "prompt": "..."
+    "prompt": "What is 17% of 240?"
   }
 ]
 ```
 
-### Output Format
+## Output Files
 
-Results are written to `/output/results.json`:
+- [output/results.json](output/results.json) contains the final answers:
+
 ```json
 [
   {
     "task_id": "t1",
     "answer": "..."
-  },
-  {
-    "task_id": "t2",
-    "answer": "..."
   }
 ]
 ```
 
-## Architecture
+- [output/analytics.json](output/analytics.json) contains per-run summary data and task-level analytics.
+- [output/analytics_logs/](output/analytics_logs) stores run snapshots named `run_<run_id>.json`.
 
-### Project Structure
+## Configuration
 
+The pipeline reads these environment variables at runtime:
+
+| Variable | Required | Purpose | Default |
+| --- | --- | --- | --- |
+| `FIREWORKS_API_KEY` | Yes | Fireworks API key | None |
+| `FIREWORKS_BASE_URL` | Yes | Fireworks base URL | None |
+| `ALLOWED_MODELS` | Yes | Comma-separated list of allowed model IDs | None |
+| `ROUTER_MODEL` | No | Model used by the router/classifier | First entry in `ALLOWED_MODELS` |
+| `INPUT_PATH` | No | Input tasks file | `/input/tasks.json` |
+| `OUTPUT_PATH` | No | Results file | `/output/results.json` |
+| `ANALYTICS_PATH` | No | Analytics summary file | `/output/analytics.json` |
+| `ANALYTICS_HISTORY_DIR` | No | Analytics history directory | `/output/analytics_logs` |
+| `LOG_LEVEL` | No | Python logging level | `INFO` |
+| `DEFAULT_TEMPERATURE` | No | Default generation temperature | `0.0` |
+| `MAX_RETRIES` | No | Retry count for model calls | `3` |
+| `REQUEST_TIMEOUT` | No | HTTP timeout in seconds | `60` |
+
+## Repository Layout
+
+```text
+app/
+├── main.py
+├── clients/
+│   ├── fireworks_client.py
+│   └── response_parser.py
+├── core/
+│   └── config.py
+├── io/
+│   ├── reader.py
+│   └── writer.py
+├── models/
+│   ├── result.py
+│   └── task.py
+├── router/
+│   ├── classifier.py
+│   ├── model_capabilities.json
+│   ├── model_selector.py
+│   ├── prompt_templates.py
+│   └── token_allocator.py
+└── services/
+    ├── analytics.py
+    ├── inference.py
+    ├── pipeline.py
+    └── processor.py
 ```
-eco-router-ai/
-├── app/
-│   ├── main.py                 # Entry point
-│   │
-│   ├── core/                   # Configuration & constants
-│   │   ├── config.py           # Settings from environment
-│   │   ├── logger.py           # Logging setup
-│   │   └── constants.py        # Task categories, model configs
-│   │
-│   ├── clients/                # External services
-│   │   └── fireworks_client.py # Fireworks AI API wrapper
-│   │
-│   ├── router/                 # AI routing logic
-│   │   ├── router.py           # Main routing orchestration
-│   │   ├── classifier.py       # Task category classification
-│   │   ├── difficulty.py       # Task difficulty estimation
-│   │   ├── model_selector.py   # Model selection for efficiency
-│   │   └── prompt_optimizer.py # Prompt optimization
-│   │
-│   ├── prompts/                # Prompt templates
-│   │   ├── summarization.py    # Summarization prompts
-│   │   ├── reasoning.py        # Reasoning & logic prompts
-│   │   ├── coding.py           # Code generation/debugging
-│   │   ├── sentiment.py        # Sentiment classification
-│   │   ├── ner.py              # Named entity recognition
-│   │   └── system.py           # System prompts
-│   │
-│   ├── services/               # Business logic
-│   │   ├── task_service.py     # Task processing
-│   │   ├── inference_service.py # Inference orchestration
-│   │   └── evaluation_service.py # Result evaluation
-│   │
-│   ├── io/                     # I/O operations
-│   │   ├── reader.py           # JSON input reader
-│   │   └── writer.py           # JSON output writer
-│   │
-│   ├── models/                 # Data models
-│   │   ├── task.py             # Task schema (Pydantic)
-│   │   ├── result.py           # Result schema
-│   │   └── response.py         # API response schema
-│   │
-│   └── utils/                  # Utility functions
-│       ├── json_utils.py       # JSON helpers
-│       ├── text_utils.py       # Text processing
-│       └── timer.py            # Performance monitoring
-│
-├── input/
-│   └── tasks.json              # Input tasks
-├── output/
-│   └── results.json            # Output results
-│
-├── Dockerfile                  # Container image
-├── docker-compose.yml          # Docker Compose config
-├── context.md                  # Detailed specification
-├── CLAUDE.md                   # Development guide
-└── README.md                   # This file
-```
-
-## Environment Variables
-
-The following environment variables must be provided at runtime. **Do not hardcode these in the image.**
-
-| Variable             | Description                               | Example                                 |
-| -------------------- | ----------------------------------------- | --------------------------------------- |
-| `FIREWORKS_API_KEY`  | API key provided by the harness           | `sk-...`                                |
-| `FIREWORKS_BASE_URL` | Base URL for all Fireworks API calls      | `https://api.fireworks.ai/inference/v1` |
-| `ALLOWED_MODELS`     | Comma-separated list of allowed model IDs | `model1,model2,model3`                  |
-
-## Router Capability Metadata
-
-Router model capabilities are stored in [app/router/model_capabilities.json](app/router/model_capabilities.json).
-Update that file if you want to refine which model is described as better for a given task type.
-
-## Tech Stack
-
-| Layer             | Technology                       |
-| ----------------- | -------------------------------- |
-| **Language**      | Python 3.12                      |
-| **API**           | Fireworks AI (OpenAI-compatible) |
-| **HTTP**          | httpx (async)                    |
-| **JSON**          | orjson (high-performance)        |
-| **Validation**    | Pydantic v2                      |
-| **Async Runtime** | asyncio                          |
-| **Configuration** | python-dotenv (dev)              |
-| **Testing**       | pytest                           |
-| **Container**     | Docker                           |
-
-## Constraints & Requirements
-
-- ✅ All inference **must** route through Fireworks AI via `FIREWORKS_BASE_URL`
-- ✅ Only models in `ALLOWED_MODELS` may be called
-- ✅ Output must be valid JSON (malformed output scores zero)
-- ✅ Max runtime: **10 minutes**
-- ✅ Container startup: **≤ 60 seconds**
-- ✅ Image architecture: `linux/amd64`
-- ✅ Compressed image size: **< 10GB**
-- ✅ Accuracy is gated first, token efficiency ranked second among accurate solutions
-
-## Development
-
-For detailed development guidelines and internal architecture decisions, see [CLAUDE.md](CLAUDE.md).
-
-For the complete specification, including scoring criteria and capability definitions, see [context.md](context.md).
 
 ## Testing
 
-Run the test suite:
+Run the test suite with:
+
 ```bash
-pytest app/ -v
+py -m pytest
 ```
 
-## Performance Monitoring
+## Notes
 
-The agent logs inference latency, token usage, and model selection decisions. Monitor these metrics to optimize routing and model efficiency.
+- Model capability metadata lives in [app/router/model_capabilities.json](app/router/model_capabilities.json).
+- The complete task specification is in [context.md](context.md).
 
 ## License
 
-See [LICENSE](LICENSE) file for details.
+See [LICENSE](LICENSE) for details.
