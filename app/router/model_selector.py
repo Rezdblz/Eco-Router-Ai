@@ -123,20 +123,3 @@ def select_model(classification: Dict[str, object], allowed_models: Optional[Ite
     return chosen, rationale
 
 
-if __name__ == "__main__":
-    # Test with environment variable (as per context.md requirements)
-    os.environ["ALLOWED_MODELS"] = "accounts/fireworks/models/minimax-m3,accounts/fireworks/models/kimi-k2p7-code,accounts/fireworks/models/gemma-4-26b-a4b-it"
-    
-    examples = [
-        {"category": "text_summarisation", "confidence": 0.9},
-        {"category": "code_generation", "confidence": 0.85},
-        {"category": "mathematical_reasoning", "confidence": 0.3},
-        {"category": "code_debugging", "confidence": 0.5},
-        {"category": "factual_knowledge", "confidence": 0.95},
-        {"category": "logical_deductive_reasoning", "confidence": 0.75},
-    ]
-    for ex in examples:
-        model, rationale = select_model(ex)
-        print(f"{ex['category']:30s} (conf={ex['confidence']:.2f}) => {model}")
-        print(f"  Reason: {rationale['reason']}")
-

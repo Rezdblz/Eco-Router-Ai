@@ -74,7 +74,7 @@ def classify(
         return {"category": "factual_knowledge", "confidence": 0.0, "method": "rules"}
     rule_result = _classify_rules(text)
 
-    if rule_result["confidence"] >= 0.85:
+    if rule_result["confidence"] >= 0.95:
         return rule_result
     if router_model:
         instruct = (
