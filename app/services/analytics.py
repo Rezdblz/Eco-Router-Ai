@@ -40,7 +40,10 @@ def build_summary(artifacts: RunArtifacts) -> dict[str, Any]:
         "router_prompt_tokens": sum(r["router_prompt_tokens"] for r in rows),
         "router_completion_tokens": sum(r["router_completion_tokens"] for r in rows),
         "router_total_tokens": sum(r["router_total_tokens"] for r in rows),
-
+        "overall_total_tokens": (
+            sum(r["router_total_tokens"] for r in rows)
+            + sum(r["total_tokens"] for r in rows)
+        ),
         "prompt_tokens": sum(r["prompt_tokens"] for r in rows),
         "completion_tokens": sum(r["completion_tokens"] for r in rows),
         "total_tokens": sum(r["total_tokens"] for r in rows),

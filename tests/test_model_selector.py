@@ -14,3 +14,10 @@ def test_select_model_low_confidence(monkeypatch):
     monkeypatch.setenv("ALLOWED_MODELS", "minimax-m3,kimi-k2p7-code,gemma-4-31b-it")
     chosen, rationale = select_model({"category": "mathematical_reasoning", "confidence": 0.2}, None)
     assert rationale["reason"] == "low_confidence_choose_more_capable"
+
+
+def test_select_model_unknown_category_returns_none(monkeypatch):
+    monkeypatch.setenv("ALLOWED_MODELS", "minimax-m3,kimi-k2p7-code,gemma-4-31b-it")
+    chosen, rationale = select_model({"category": None, "confidence": 0.4}, None)
+    assert chosen is None
+    assert rationale["reason"] == "unknown_category_no_selection"

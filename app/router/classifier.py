@@ -21,6 +21,7 @@ Functions:
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Dict
 
@@ -29,15 +30,82 @@ from app.clients.response_parser import (
     extract_message_text,
 )
 
+logger = logging.getLogger("eco_router")
+
+ALLOWED_CATEGORIES = {
+    "factual_knowledge",
+    "mathematical_reasoning",
+    "sentiment_classification",
+    "text_summarisation",
+    "named_entity_recognition",
+    "code_debugging",
+    "logical_deductive_reasoning",
+    "code_generation",
+}
+
 _PATTERNS = [
-    (re.compile(r"\b(summariz|summary|summarise|summarize)\b", re.I), "text_summarisation", 0.9),
-    (re.compile(r"\b(sentiment|opinion|tone|attitude)\b", re.I), "sentiment_classification", 0.9),
-    (re.compile(r"\b(named entity|ner|entities|extract entities|extract|entity recognition)\b", re.I), "named_entity_recognition", 0.9),
-    (re.compile(r"\b(debug|bug|fix|traceback|stack trace|error in)\b", re.I), "code_debugging", 0.9),
-    (re.compile(r"\b(write a function|implement a function|generate code|create a function|code snippet|return the code)\b", re.I), "code_generation", 0.9),
-    (re.compile(r"\b(calculate|compute|solve|sum|percentage|percent|equation|integral|derivative|math|arithmetic|increase|decrease)\b", re.I), "mathematical_reasoning", 0.9),
-    (re.compile(r"\b(logic|logical|deduce|deductive|puzzle|constraint|satisfy|who has|each have|different)\b", re.I), "logical_deductive_reasoning", 0.9),
-    (re.compile(r"\b(explain|what is|define|describe|how does|what are)\b", re.I), "factual_knowledge", 0.75),
+    (re.compile(r"\b(summariz|summary|summarise|summarize)\b", re.I), "text_summarisation", 0.85),
+    (re.compile(r"\b(sentiment|opinion|tone|attitude)\b", re.I), "sentiment_classification", 0.85),
+    (re.compile(r"\b(named entity|ner|named entities|extract entities|entity recognition)\b", re.I), "named_entity_recognition", 0.9),
+    (re.compile(
+            r"\b("
+            r"debug|bug|fix code|fix this code|"
+            r"traceback|stack trace|"
+            r"exception|syntax error|runtime error|"
+            r"compile error|error in code"
+            r")\b",
+            re.I,
+        ),
+        "code_debugging",
+        0.85,
+    ),
+    (re.compile(
+            r"\b("
+            r"write a function|implement|generate code|"
+            r"create a function|code snippet|"
+            r"write code|"
+            r"python function|javascript function"
+            r")\b",
+            re.I,
+        ),
+        "code_generation",
+        0.85,
+    ),
+    (re.compile(
+            r"\b("
+            r"calculate|compute|percentage|percent|"
+            r"equation|integral|derivative|arithmetic|"
+            r"average|multiplication|division|subtraction|addition"
+            r")\b",
+            re.I,
+        ),
+        "mathematical_reasoning",
+        0.80,
+    ),
+    (re.compile(
+            r"\b("
+            r"logic|logical|deduce|deductive|"
+            r"constraint puzzle|logic puzzle|"
+            r"who owns|who has|"
+            r"each person|each friend|"
+            r"given that"
+            r")\b",
+            re.I,
+        ),
+        "logical_deductive_reasoning",
+        0.80,
+    ),
+    (re.compile(
+            r"\b("
+            r"what is|what are|who is|"
+            r"where is|when did|"
+            r"define|describe|explain"
+            r")\b",
+            re.I,
+        ),
+        "factual_knowledge",
+        0.70,
+    ),
 ]
 
 
@@ -58,11 +126,27 @@ def _extract_usage(response: object) -> dict[str, int]:
         "total_tokens": total_tokens,
     }
 
+
+def _finalize_category(result: Dict[str, object]) -> Dict[str, object]:
+    if result.get("category"):
+        return result
+
+    finalized = dict(result)
+    finalized["category"] = "factual_knowledge"
+    finalized["confidence"] = float(finalized.get("confidence", 0.0) or 0.0)
+    finalized.setdefault("method", "rules")
+    finalized.setdefault("router_model", None)
+    finalized.setdefault("router_usage", {})
+    return finalized
+
 def classify(
         prompt: str,
-        router_model: str,
-        base_url: str,
-        api_key: str,
+        router_model: str = "",
+        base_url: str = "",
+        api_key: str = "",
+        rule_high_confidence: float = 0.85,
+        ai_min_confidence: float = 0.60,
+        confidence_margin: float = 0.15,
     ) -> Dict[str, object]:
     """Classify a prompt into one of the predefined categories.
 
@@ -71,45 +155,96 @@ def classify(
     """
     text = _normalize(prompt)
     if not text:
-        return {"category": "factual_knowledge", "confidence": 0.0, "method": "rules"}
-    rule_result = _classify_rules(text)
-
-    if rule_result["confidence"] >= 0.95:
-        return rule_result
-    if router_model:
-        instruct = (
-            "Classify the task into one category.\n"
-            "Categories:\n"
-            "- factual_knowledge\n"
-            "- mathematical_reasoning\n"
-            "- sentiment_classification\n"
-            "- text_summarisation\n"
-            "- named_entity_recognition\n"
-            "- code_debugging\n"
-            "- logical_deductive_reasoning\n"
-            "- code_generation\n\n"
-            'Return ONLY JSON: {"category":"...","confidence":0.0}\n\n'
-            f"Task:\n{text}"
+        return {"category": "factual_knowledge", "confidence": 0.0, "method": "rules", "router_model": None, "router_usage": {}}
+    rule_result = _classify_rules(
+            text,
+            confidence_margin,
         )
+    
+    logger.debug(f"Rule result: category={rule_result.get('category')}, confidence={rule_result.get('confidence')}, ambiguous={rule_result.get('ambiguous')}")
+
+    if (
+        rule_result.get("category")
+        and rule_result["confidence"] >= rule_high_confidence
+        and not rule_result.get("ambiguous", False)
+    ):
+        logger.debug(f"High confidence detected ({rule_result['confidence']} >= {rule_high_confidence}), returning rules result")
+        # High confidence: return rules result with router fields
+        result = dict(rule_result)
+        result.setdefault("router_model", None)
+        result.setdefault("router_usage", {})
+        return result
+    
+    # If low confidence OR ambiguous, try AI router
+    confidence = rule_result.get("confidence", 0.0)
+    is_ambiguous = rule_result.get("ambiguous", False)
+    is_low_confidence = confidence < ai_min_confidence
+    
+    logger.debug(f"Confidence check: {confidence} < {ai_min_confidence}? {is_low_confidence}, ambiguous={is_ambiguous}, router_model={bool(router_model)}")
+    
+    should_call_router = bool(router_model) and (
+        is_ambiguous
+        or confidence < rule_high_confidence
+    )
+    
+    logger.debug(f"should_call_router={should_call_router}")
+
+    if should_call_router:
         
+        instruct = (
+            "Classify this task into exactly one category:\n"
+            "factual_knowledge, mathematical_reasoning, sentiment_classification, "
+            "text_summarisation, named_entity_recognition, code_debugging, "
+            "logical_deductive_reasoning, code_generation.\n\n"
+            'Return only JSON: {"category":"category_name","confidence":0.0}\n\n'
+            f"Task:\n{text[:1000]}"
+        )
+        logger.info(
+            "Calling AI router model=%s",
+            router_model,
+        )
+
+        logger.debug(
+            "Router prompt:\n%s",
+            instruct,
+        )
+
         resp = call_router_model(
             instruct,
             router_model,
             base_url,
             api_key,
         )
+        
+        logger.info(
+            "AI router raw response received: %s",
+            bool(resp),
+        )
+        
         if resp:
             out_text = extract_message_text(resp)
+            
+            logger.info(
+                "AI router output: %s",
+                out_text,
+            )
+            
             router_usage = _extract_usage(resp)
 
             try:
                 parsed = json.loads(out_text)
                 if isinstance(parsed, dict) and "category" in parsed:
+                    category = parsed.get("category")
                     confidence = float(parsed.get("confidence", 0.0))
-                    
-                    if confidence >= 0.4:
+
+                    if (
+                        category in ALLOWED_CATEGORIES
+                        and (
+                            confidence >= ai_min_confidence
+                        )
+                    ):
                         return {
-                            "category": parsed.get("category"),
+                            "category": category,
                             "confidence": confidence,
                             "method": "ai_router",
                             "router_model": router_model,
@@ -119,14 +254,20 @@ def classify(
             except Exception:
                 # ignore parsing errors and fall back to rules
                 pass
-            
-            return rule_result
+
+            return _finalize_category(rule_result)
+
+    return _finalize_category(rule_result)
+    
 
 def classify_task(
         task: Dict[str, object],
-        router_model: str,
-        base_url: str,
-        api_key: str,
+        router_model: str = "",
+        base_url: str = "",
+        api_key: str = "",
+        rule_high_confidence: float = 0.85,
+        ai_min_confidence: float = 0.60,
+        confidence_margin: float = 0.15,
     ) -> Dict[str, object]:
     """Classify a task dict. Expects a `prompt` field.
 
@@ -138,12 +279,18 @@ def classify_task(
         router_model,
         base_url,
         api_key,
+        rule_high_confidence,
+        ai_min_confidence,
+        confidence_margin,
     )
     out = dict(task)
     out["classification"] = cls
     return out
 
-def _classify_rules(text: str) -> Dict[str, object]:
+def _classify_rules(
+        text: str,
+        confidence_margin: float,
+    ) -> Dict[str, object]:
     """
     Rule-based classifier.
 
@@ -171,20 +318,37 @@ def _classify_rules(text: str) -> Dict[str, object]:
                 aggregated.get(category, 0.0),
                 confidence,
             )
-
-        best_category, best_confidence = max(
+        sorted_scores = sorted(
             aggregated.items(),
             key=lambda item: item[1],
+            reverse=True,
         )
+        best_category, best_confidence = sorted_scores[0]
+        
+            
+        ambiguous = False
 
-        # Small confidence boost for short, explicit prompts
-        if len(text.split()) < 8:
-            best_confidence = min(best_confidence + 0.05, 1.0)
+        if len(sorted_scores) > 1:
+            margin = (
+                sorted_scores[0][1]
+                -
+                sorted_scores[1][1]
+            )
 
+            if margin < confidence_margin:
+                ambiguous = True
+                return {
+                    "category": None,
+                    "confidence": round(margin, 2),
+                    "method": "rules",
+                    "ambiguous": True,
+                }
+                
         return {
             "category": best_category,
             "confidence": round(best_confidence, 2),
             "method": "rules",
+            "ambiguous": ambiguous,
         }
 
     # Detect obvious code
@@ -195,17 +359,20 @@ def _classify_rules(text: str) -> Dict[str, object]:
             "method": "rules",
         }
 
-    # Questions usually request factual knowledge
     if text.endswith("?"):
         return {
-            "category": "factual_knowledge",
-            "confidence": 0.60,
+            "category": None,
+            "confidence": 0.30,
             "method": "rules",
+            "ambiguous": True,
         }
 
     # Default fallback
     return {
-        "category": "factual_knowledge",
+        "category": None,
         "confidence": 0.40,
         "method": "rules",
+        "ambiguous": True,
     }
+    
+    

@@ -79,8 +79,8 @@ def _select_by_capability(category: Optional[str], allowed: List[str]) -> Tuple[
     }
     
     if not category or category not in category_requirements:
-        # No category info, use first available
-        return allowed[0], "unknown_category_using_first_available"
+        # Unknown categories should remain unresolved instead of being forced onto a model.
+        return None, "unknown_category_no_selection"
     
     required_capabilities = category_requirements[category]
     

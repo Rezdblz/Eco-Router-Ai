@@ -22,6 +22,11 @@ def extract_message_text(response: Dict[str, Any]) -> Optional[str]:
 
     message = choices[0].get("message", {})
 
+    # Some providers return the assistant payload under `answer`.
+    answer = message.get("answer")
+    if isinstance(answer, str) and answer.strip():
+        return answer.strip()
+
     # Preferred: assistant content
     content = message.get("content")
     if isinstance(content, str) and content.strip():
@@ -73,13 +78,19 @@ def call_router_model(
 ) -> Optional[Dict[str, Any]]:
 
     return _post_chat_request(
+        json_mode=True,
         model=model,
         messages=[
             {
                 "role": "system",
                 "content": (
-                    "You are an AI routing classifier."
-                    "Return ONLY valid JSON."
+                    "You are a routing classification API. "
+                    "Classify the user task into exactly one category. "
+                    "Return ONLY a valid JSON object. "
+                    "No explanations. "
+                    "No markdown. "
+                    "No extra fields. "
+                    'Schema: {"category":"category_name","confidence":0.0}'
                 ),
             },
             {
@@ -88,7 +99,7 @@ def call_router_model(
             },
         ],
         temperature=0.0,
-        max_tokens=24,
+        max_tokens=32,
         base_url=base_url,
         api_key=api_key,
         timeout=timeout,
@@ -96,6 +107,7 @@ def call_router_model(
 
 def _post_chat_request(
     *,
+    json_mode=False,
     model: str,
     messages: list[dict[str, str]],
     max_tokens: int,
@@ -106,7 +118,7 @@ def _post_chat_request(
 ) -> Optional[Dict[str, Any]]:
 
     url = _build_chat_completions_url(base_url)
-
+    
     headers = {
     "Authorization": f"Bearer {api_key}",
     "Content-Type": "application/json",
@@ -118,6 +130,11 @@ def _post_chat_request(
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
+    
+    if json_mode:
+        payload["response_format"] = {
+            "type": "json_object"
+        }
 
     try:
         with httpx.Client(timeout=timeout) as client:

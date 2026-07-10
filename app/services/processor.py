@@ -23,6 +23,7 @@ class ClassificationResult:
     category: str | None
     router_model: str | None
     router_usage: dict[str, int]
+    method: str | None
 
 
 def extract_classification(
@@ -32,12 +33,18 @@ def extract_classification(
     """
     Run the router/classifier and normalize its output.
     """
+    
+    # Use the first allowed model as router if no explicit router model is configured
+    router_model = settings.router_model or (settings.allowed_models[0] if settings.allowed_models else "")
 
     classified = classify_task(
         task.model_dump(),
-        settings.router_model,
+        router_model,
         settings.fireworks_base_url,
         settings.fireworks_api_key,
+        settings.rule_high_confidence,
+        settings.ai_min_confidence,
+        settings.confidence_margin,
     )
 
     classification = classified.get("classification", {})
@@ -56,6 +63,8 @@ def extract_classification(
                 "total_tokens": 0,
             },
         ),
+        method=classification.get("method"),
+        
     )
 
 

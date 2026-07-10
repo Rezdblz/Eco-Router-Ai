@@ -230,33 +230,35 @@ def _dynamic_retry_limit(
     allocated: int,
 ) -> int:
     retry_base = {
-        "factual_knowledge": 192,
-        "sentiment_classification": 80,
-        "text_summarisation": 256,
-        "named_entity_recognition": 192,
-        "mathematical_reasoning": 160,
-        "logical_deductive_reasoning": 224,
-        "code_generation": 384,
-        "code_debugging": 448,
-    }.get(category, 128)
+        "factual_knowledge": 128,
+        "sentiment_classification": 64,
+        "text_summarisation": 192,
+        "named_entity_recognition": 128,
+        "mathematical_reasoning": 128,
+        "logical_deductive_reasoning": 160,
+        "code_generation": 256,
+        "code_debugging": 320,
+    }.get(category, 96)
 
     words = len(prompt.split())
 
     if words > 500:
-        retry_base += 128
-    elif words > 300:
-        retry_base += 96
-    elif words > 150:
         retry_base += 64
-    elif words > 75:
+    elif words > 300:
+        retry_base += 48
+    elif words > 150:
         retry_base += 32
+    elif words > 75:
+        retry_base += 16
 
     if category in {
         "factual_knowledge",
         "text_summarisation",
         "named_entity_recognition",
     } and words > 40:
-        retry_base += 32
+        retry_base += 16
+
+    return min(retry_base, max(allocated, 0) + 64)
 
     retry_floor = allocated + max(32, allocated // 4)
 

@@ -2,25 +2,25 @@ import math
 
 
 CATEGORY_BASES = {
-    "sentiment_classification": 24,
-    "named_entity_recognition": 96,
-    "text_summarisation": 144,
-    "mathematical_reasoning": 112,
-    "factual_knowledge": 112,
-    "logical_deductive_reasoning": 144,
-    "code_generation": 288,
-    "code_debugging": 352,
+    "sentiment_classification": 80,
+    "named_entity_recognition": 160,
+    "text_summarisation": 300,
+    "mathematical_reasoning": 250,
+    "factual_knowledge": 280,
+    "logical_deductive_reasoning": 300,
+    "code_generation": 450,
+    "code_debugging": 500,
 }
 
 CATEGORY_MULTIPLIERS = {
-    "sentiment_classification": 0.9,
-    "named_entity_recognition": 1.15,
-    "text_summarisation": 1.2,
-    "mathematical_reasoning": 1.15,
-    "factual_knowledge": 1.25,
-    "logical_deductive_reasoning": 1.2,
-    "code_generation": 1.25,
-    "code_debugging": 1.3,
+    "sentiment_classification": 1.0,
+    "named_entity_recognition": 1.2,
+    "text_summarisation": 1.3,
+    "mathematical_reasoning": 1.2,
+    "factual_knowledge": 1.3,
+    "logical_deductive_reasoning": 1.3,
+    "code_generation": 1.4,
+    "code_debugging": 1.4,
 }
 
 

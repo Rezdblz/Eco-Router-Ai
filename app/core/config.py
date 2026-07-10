@@ -17,6 +17,11 @@ class Settings(BaseModel):
     allowed_models: list[str]
     router_model: str
 
+    rule_high_confidence: float = 0.85
+    ai_min_confidence: float = 0.60
+    confidence_margin: float = 0.15
+    
+    
     input_path: str = "/input/tasks.json"
     output_path: str = "/output/results.json"
     analytics_output_path: str = "/output/analytics.json"
@@ -72,6 +77,10 @@ def load_settings() -> Settings:
 
     router_model = os.getenv("ROUTER_MODEL", "").strip()
 
+    print("DEBUG SETTINGS")
+    print("ALLOWED MODELS:", models)
+    print("ROUTER MODEL:", router_model)
+    
     if not router_model:
         router_model = models[0]
     return Settings(
@@ -80,7 +89,25 @@ def load_settings() -> Settings:
 
         allowed_models=models,
         router_model=router_model,
+        
+        
+        rule_high_confidence=_parse_numeric(
+            "RULE_HIGH_CONFIDENCE",
+            float,
+            "0.75",
+        ),
 
+        ai_min_confidence=_parse_numeric(
+            "AI_MIN_CONFIDENCE",
+            float,
+            "0.50",
+        ),
+        confidence_margin=_parse_numeric(
+            "CONFIDENCE_MARGIN",
+            float,
+            "0.15"
+        ),
+        
         input_path=os.getenv("INPUT_PATH", "/input/tasks.json"),
         output_path=os.getenv("OUTPUT_PATH", "/output/results.json"),
 
