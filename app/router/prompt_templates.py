@@ -11,14 +11,13 @@ from typing import Any
 CATEGORY_PROMPTS: dict[str, dict[str, Any]] = {
 	"factual_knowledge": {
 		"instruction": (
-			"Answer in 1-2 plain-English sentences."
-			" Do not add markdown unless the task asks for it."
+			"Answer the user's question accurately and follow any requested output format exactly."
+			"Do not add markdown unless the task asks for it."
     	),
 	},
 	"mathematical_reasoning": {
 		"instruction": (
-			"Show only the essential steps and the final answer."
-			" Keep numbers, units, and calculations exact."
+			"Solve the problem accurately and follow any instructions about showing reasoning or steps."
 		),
 	},
 	"sentiment_classification": {
@@ -29,48 +28,43 @@ CATEGORY_PROMPTS: dict[str, dict[str, Any]] = {
 	},
 	"text_summarisation": {
 		"instruction": (
-			"Summarise the passage in one sentence."
-			" Do not use bullets, headings, or commentary."
+			"Complete the user's summarization request exactly as specified."
 		),
 	},
 	"named_entity_recognition": {
 		"instruction": (
-			"Extract only entities present in the text."
-			" Group them by type in a compact list."
+			"Extract only the entities present in the text and follow the output format requested by the task."
 		),
 	},
 	"code_debugging": {
 		"instruction": (
-			"Identify the bug, then provide the corrected code and a short explanation."
-			" Do not rewrite unrelated parts of the solution."
+			"Complete the requested debugging task exactly as specified. Modify or explain the code only as requested."
+			"Do not rewrite unrelated parts of the solution."
 		),
 	},
 	"logical_deductive_reasoning": {
 		"instruction": (
-			"Solve the puzzle with concise reasoning and the final answer."
-			" Do not speculate beyond the given constraints."
+			"Solve the reasoning task accurately and follow any instructions about showing reasoning."
 		),
 	},
 	"code_generation": {
 		"instruction": (
-			"Write the code directly with minimal explanation."
-			" Include imports and function signatures if needed."
+			"Generate the requested code and follow the requested format exactly. Include additional code only if the task requires it."
 		),
 	},
 }
 
 
 DEFAULT_PROMPT_CONFIG: dict[str, Any] = {
-	"instruction": "Answer directly in English with the smallest useful accurate output.",
+	"instruction": "Answer accurately in English and follow the requested output format exactly.",
 }
 
 
 COMMON_PROMPT_RULES = (
 	"Follow the requested output format exactly."
-	" If the task asks for a label, number, list, or code, provide only that format."
-	" Use the fewest words needed."
-	" Do not add preambles, meta commentary, or self-reference."
-	" If the task is ambiguous or missing required information, say so briefly."
+	"If the task asks for a label, number, list, or code, provide only that format."
+	"Do not add preambles, meta commentary, or self-reference."
+	"If the task is ambiguous or missing required information, say so briefly."
 )
 
 
