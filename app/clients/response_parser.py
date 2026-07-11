@@ -7,41 +7,50 @@ logger = logging.getLogger(__name__)
 
 def extract_message_text(response: Dict[str, Any]) -> Optional[str]:
     """
-    Extract the assistant's final answer from a Fireworks/OpenAI chat response.
+    Extract assistant text from either:
+    - Fireworks / OpenAI
+    - Ollama
     """
 
     if not response:
         return None
 
+    # Already a plain string
     if isinstance(response, str):
         return response.strip() or None
 
+    # -------------------------
+    # Ollama format
+    # -------------------------
+    message = response.get("message")
+    if isinstance(message, dict):
+        content = message.get("content")
+        if isinstance(content, str) and content.strip():
+            return content.strip()
+
+    # -------------------------
+    # Fireworks / OpenAI format
+    # -------------------------
     choices = response.get("choices")
-    if not choices:
-        return None
+    if choices:
+        message = choices[0].get("message", {})
 
-    message = choices[0].get("message", {})
+        answer = message.get("answer")
+        if isinstance(answer, str) and answer.strip():
+            return answer.strip()
 
-    # Some providers return the assistant payload under `answer`.
-    answer = message.get("answer")
-    if isinstance(answer, str) and answer.strip():
-        return answer.strip()
+        content = message.get("content")
+        if isinstance(content, str) and content.strip():
+            return content.strip()
 
-    # Preferred: assistant content
-    content = message.get("content")
-    if isinstance(content, str) and content.strip():
-        return content.strip()
+        reasoning = message.get("reasoning_content")
+        if isinstance(reasoning, str) and reasoning.strip():
+            return reasoning.strip()
 
-    # Some reasoning models only expose reasoning_content
-    reasoning = message.get("reasoning_content")
-    if isinstance(reasoning, str) and reasoning.strip():
-        return reasoning.strip()
-
-    # Streaming responses
-    delta = choices[0].get("delta", {})
-    delta_content = delta.get("content")
-    if isinstance(delta_content, str) and delta_content.strip():
-        return delta_content.strip()
+        delta = choices[0].get("delta", {})
+        delta_content = delta.get("content")
+        if isinstance(delta_content, str) and delta_content.strip():
+            return delta_content.strip()
 
     return None
 

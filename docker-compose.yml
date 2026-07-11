@@ -1,10 +1,19 @@
-version: "3.8"
+version: "3.9"
+
 services:
-  eco-router:
-    image: eco-router-ai:dev
+  router:
     build: .
-    env_file: .env
-    volumes:
-      - ./input:/input
-      - ./output:/output
-    restart: "no"
+    container_name: eco-router
+
+    depends_on:
+      - ollama
+
+    environment:
+      OLLAMA_URL: http://ollama:11434
+
+  ollama:
+    build: ./ollama
+    container_name: eco-router-llm
+
+    ports:
+      - "11434:11434"

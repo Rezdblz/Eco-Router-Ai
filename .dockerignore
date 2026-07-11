@@ -22,5 +22,5 @@ tests/
 .DS_Store
 
 # Local runtime data
-output/*
-input/*
+output/
+input/
